@@ -14,7 +14,7 @@ def generate_blueprint(product_idea):
         response text (Markdown)
     """
     # 這裡可以選擇模型，flash 速度快便宜，pro 能力強
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.0-flash')
     
     # 可以在這裡優化您的 Prompt (提示詞)
     prompt = f"""
