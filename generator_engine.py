@@ -61,9 +61,46 @@ def create_project_zip(data):
 """
 
     # 2. SPEC.md
-    # 注意：這裡的 JSON 需要轉成字串才能放入 f-string
+    # 注意：這裡確保 f-string 結構正確
+    spec_content = data.get('structure_tree', '')
+    data_schema = str(data.get('data_schema', '{}'))
+    
     spec = f"""# 📐 技術規格書
 
 ## 1. 系統架構圖
 ```text
-{data.get('structure_tree', '')}
+{spec_content}
+2. 資料結構 (Data Schema)
+JSON
+
+{data_schema}
+"""
+
+# 3. TODOLIST.md
+todo_p1 = data.get('todo_phase1', '')
+todo_p2 = data.get('todo_phase2', '')
+
+todo = f"""# ✅ 任務清單
+Phase 1: MVP (最小可行性產品)
+{todo_p1}
+
+Phase 2: Scale (擴充階段)
+{todo_p2} """
+
+# 4. REPORT.md
+risk_log = data.get('risk_log', '')
+
+report = f"""# 📋 開發日誌 (Dev Report)
+初始評估與風險
+{risk_log} """
+
+# 執行打包動作
+buffer = io.BytesIO()
+with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("README.md", readme)
+    z.writestr("SPEC.md", spec)
+    z.writestr("TODOLIST.md", todo)
+    z.writestr("REPORT.md", report)
+
+buffer.seek(0)
+return buffer
