@@ -12,7 +12,7 @@ def call_ai_architect(idea, api_key):
     if not api_key: return None
     
     genai.configure(api_key=api_key)
-    # 嘗試使用最強模型
+    # 嘗試使用最強模型，若無則降級
     try:
         model = genai.GenerativeModel('gemini-1.5-pro')
     except:
