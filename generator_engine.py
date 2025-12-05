@@ -4,13 +4,63 @@ import streamlit as st
 import json
 import zipfile  # 新增：用於打包下載
 import io       # 新增：用於處理二進位流
+import time     # 新增：用於重試時的延遲
 
 def configure_genai(api_key):
     # 只存 Key，不設定 SDK
     st.session_state.api_key_proxy = api_key
 
+# ==========================================
+# 👇 新增：強固型 API 呼叫函式 (處理 429 錯誤)
+# ==========================================
+def call_gemini_api_robust(prompt_text, api_key):
+    """
+    策略：優先使用 2.0-flash-exp，如果遇到 429 (額度滿) 或 503，
+    自動切換到 1.5-flash (穩定版)。
+    """
+    # 定義模型優先順序
+    model_candidates = [
+        "gemini-2.0-flash-exp", 
+        "gemini-1.5-flash"
+    ]
+    
+    last_error = ""
+
+    for model_name in model_candidates:
+        # 建構該模型的 URL
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        data = {"contents": [{"parts": [{"text": prompt_text}]}]}
+        
+        try:
+            # 發送請求
+            response = requests.post(url, headers=headers, json=data, timeout=60)
+            
+            # 如果成功 (200)，直接回傳 JSON 與使用的模型名稱
+            if response.status_code == 200:
+                return response.json(), model_name
+            
+            # 如果是 429 (額度滿) 或 503 (忙碌)，嘗試下一個模型
+            if response.status_code in [429, 503]:
+                print(f"⚠️ 模型 {model_name} 額度滿或忙碌，切換下一個...")
+                time.sleep(1) # 稍微緩衝
+                continue
+            
+            # 其他錯誤 (如 400 參數錯誤) 直接記錄，不繼續試
+            last_error = f"Error {response.status_code}: {response.text}"
+            
+        except Exception as e:
+            last_error = str(e)
+            continue
+            
+    # 如果迴圈跑完都沒成功，拋出例外
+    raise Exception(f"所有模型皆無法連線。最後錯誤: {last_error}")
+
+# ==========================================
+# 👇 主功能區
+# ==========================================
+
 def generate_blueprint(product_idea):
-    # --- 原本的功能保持不變 ---
     # 1. 取得 Key
     api_key = st.session_state.get("api_key_proxy", "")
     if not api_key:
@@ -19,13 +69,7 @@ def generate_blueprint(product_idea):
     if not api_key:
         return {"error": "⚠️ API Key 遺失，請檢查 secrets.toml"}
 
-    # 2. 設定 API (Gemini 2.0 Flash)
-    model_name = "gemini-2.0-flash-exp" # 建議加 -exp 確保 2.0 預覽版能連線，若您的 Key 支援正式版可改回
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-
-    headers = {"Content-Type": "application/json"}
-
-    # 3. 準備 Prompt
+    # 2. 準備 Prompt (保持不變)
     prompt_text = f"""
     你是一位菁英軟體架構師。請根據以下專案需求，生成標準的軟體開發文件。
     
@@ -43,19 +87,13 @@ def generate_blueprint(product_idea):
     (內容...)
     """
 
-    data = {"contents": [{"parts": [{"text": prompt_text}]}]}
-
     try:
-        # 4. 發送請求 (直接繞過 SDK)
-        response = requests.post(url, headers=headers, json=data, timeout=60)
+        # 3. 改用強固呼叫 (取代原本直接 requests.post)
+        result_json, used_model = call_gemini_api_robust(prompt_text, api_key)
         
-        if response.status_code != 200:
-            return {"error": f"⚠️ Google 連線失敗 (Code {response.status_code}): {response.text}"}
-        
-        result_json = response.json()
         text_content = result_json['candidates'][0]['content']['parts'][0]['text']
 
-        # 5. 切分檔案
+        # 4. 切分檔案 (保持不變)
         files = {}
         patterns = {
             "README.md": r"====FILE: README\.md====\n(.*?)(?====FILE:|$)",
@@ -68,14 +106,15 @@ def generate_blueprint(product_idea):
             match = re.search(pattern, text_content, re.DOTALL)
             files[filename] = match.group(1).strip() if match else f"⚠️ {filename} 生成遺失"
 
-        files["_model_used"] = f"{model_name} (REST API)"
+        # 標記實際使用的模型
+        files["_model_used"] = f"{used_model} (Auto-Switch)"
         return files
 
     except Exception as e:
         return {"error": f"⚠️ 系統嚴重錯誤：{str(e)}"}
 
 # ==========================================
-# 👇 以下為新增功能 (不影響上方邏輯)
+# 👇 新增功能區 (ZIP & Structure)
 # ==========================================
 
 def create_zip_download(files_dict):
@@ -95,9 +134,8 @@ def create_zip_download(files_dict):
 def generate_structure(context_text):
     """
     【新功能 2】Step 2: 根據上面的文件，生成檔案結構樹與流程圖
-    也是使用 REST API 方式呼叫，避免版本問題。
     """
-    # 1. 取得 Key (與 generate_blueprint 邏輯相同)
+    # 1. 取得 Key
     api_key = st.session_state.get("api_key_proxy", "")
     if not api_key:
         api_key = st.secrets.get("GOOGLE_API_KEY", "")
@@ -105,12 +143,7 @@ def generate_structure(context_text):
     if not api_key:
         return {"STRUCTURE.txt": "API Key 遺失", "FLOW.mermaid": ""}
 
-    # 2. 設定 API (同樣使用 2.0 Flash)
-    model_name = "gemini-2.0-flash-exp" 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-    headers = {"Content-Type": "application/json"}
-
-    # 3. 準備 Prompt
+    # 2. 準備 Prompt (保持不變)
     prompt = f"""
     你是一位資深全端工程師。我們已經規劃好一份軟體規格：
     
@@ -135,18 +168,13 @@ def generate_structure(context_text):
     )
     """
 
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
-    
     try:
-        # 4. 發送請求
-        response = requests.post(url, headers=headers, json=data, timeout=60)
+        # 3. 改用強固呼叫
+        result_json, used_model = call_gemini_api_robust(prompt, api_key)
         
-        if response.status_code != 200:
-            return {"STRUCTURE.txt": f"連線失敗: {response.status_code}", "FLOW.mermaid": ""}
+        text = result_json['candidates'][0]['content']['parts'][0]['text']
         
-        text = response.json()['candidates'][0]['content']['parts'][0]['text']
-        
-        # 5. 解析回傳
+        # 4. 解析回傳
         result = {}
         patterns = {
             "STRUCTURE.txt": r"====FILE: STRUCTURE\.txt====\n(.*?)(?====FILE:|$)",
@@ -157,12 +185,4 @@ def generate_structure(context_text):
             if match:
                 content = match.group(1).strip()
                 # 清理可能多餘的 markdown 符號
-                content = content.replace("```mermaid", "").replace("```", "")
-                result[k] = content
-            else:
-                result[k] = "生成失敗"
-                
-        return result
-
-    except Exception as e:
-        return {"STRUCTURE.txt": f"系統錯誤: {str(e)}", "FLOW.mermaid": ""}
+                content = content.replace
