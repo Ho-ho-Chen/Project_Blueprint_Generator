@@ -1,88 +1,106 @@
-# ==========================================
-# app.py: 前端介面 (Streamlit)
-# ==========================================
 import streamlit as st
-import os
-from generator_engine import call_ai_architect, create_project_zip
+import google.generativeai as genai
 
-# 1. 設定頁面基礎資訊
+# --- 1. 頁面基礎設定 ---
 st.set_page_config(
-    page_title="AI 軟體架構生成器",
+    page_title="AI 軟體架構師",
     page_icon="🏗️",
-    layout="centered"
+    layout="wide"
 )
 
-# 2. 側邊欄：設定 API Key
-with st.sidebar:
-    st.header("🔑 設定")
-    api_key = st.text_input(
-        "輸入 Google Gemini API Key", 
-        type="password",
-        help="請到 Google AI Studio 申請免費 Key"
-    )
-    st.markdown("---")
-    st.markdown("### 關於本工具")
-    st.info("這是一個 AI 輔助架構設計工具。輸入點子，自動生成規格書、資料結構與開發清單。")
+# --- 2. 登入系統邏輯 (守門員) ---
+# 初始化 session state 來紀錄登入狀態
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
-# 3. 主畫面：標題與輸入區
-st.title("🏗️ AI 軟體架構師")
-st.markdown("### 從點子到藍圖，只要一瞬間")
-
-# 使用者輸入點子
-idea = st.text_area(
-    "💡 你的產品點子是什麼？", 
-    height=150,
-    placeholder="例如：我想做一個專門給素食者的食譜分享 App，要有地圖功能..."
-)
-
-# 4. 執行邏輯
-generate_btn = st.button("🚀 開始生成架構藍圖", type="primary")
-
-if generate_btn:
-    # 檢查是否都有填寫
-    if not api_key:
-        st.warning("⚠️ 請先在側邊欄輸入你的 Google API Key")
-    elif not idea:
-        st.warning("⚠️ 請輸入你的產品點子")
+def check_password():
+    """比對使用者輸入的密碼與 secrets 中的密碼"""
+    # 讀取 secrets 中的密碼，如果沒設定則預設為空
+    stored_password = st.secrets.get("app_password", "")
+    
+    if st.session_state.password_input == stored_password:
+        st.session_state.logged_in = True
+        del st.session_state.password_input  # 登入成功後清除暫存
     else:
-        # 顯示載入動畫
-        with st.spinner("🤖 AI 架構師正在思考中... (約需 15-30 秒)"):
-            # 呼叫後端引擎 (generator_engine.py)
-            result = call_ai_architect(idea, api_key)
+        st.error("❌ 密碼錯誤，請重新輸入。")
 
-            # 錯誤處理
-            if not result:
-                st.error("❌ 未知錯誤，請檢查網路或 API Key。")
-            elif "error" in result:
-                st.error(f"❌ 發生錯誤：{result['error']}")
-            else:
-                # 成功！顯示結果
-                st.success("✅ 架構生成完畢！")
-                
-                # 顯示專案名稱與簡介
-                st.subheader(f"專案：{result.get('project_name', '未命名專案')}")
-                st.write(result.get('description', ''))
-                
-                # 使用 Expander 收折詳細資訊，避免版面太亂
-                with st.expander("查看技術棧 (Tech Stack)"):
-                    st.write(result.get('tech_stack', ''))
-                
-                with st.expander("查看開發任務 (Todo List)"):
-                    st.write("### Phase 1")
-                    st.write(result.get('todo_phase1', ''))
-                    st.write("### Phase 2")
-                    st.write(result.get('todo_phase2', ''))
+# --- 3. 介面控制流程 ---
 
-                # 產生 ZIP 檔案
-                zip_buffer = create_project_zip(result)
-                
-                if zip_buffer:
-                    # 下載按鈕
-                    st.download_button(
-                        label="📥 下載完整專案包 (ZIP)",
-                        data=zip_buffer,
-                        file_name=f"{result.get('project_name', 'project')}_blueprint.zip",
-                        mime="application/zip"
-                    )
-                else:
-                    st.error("打包 ZIP 失敗。")
+# [情境 A]：還沒登入 -> 顯示登入畫面
+if not st.session_state.logged_in:
+    st.markdown("## 🔒 系統鎖定中")
+    st.markdown("請輸入授權密碼以存取 **AI 軟體架構師** 工具。")
+    
+    st.text_input(
+        "訪問密碼：", 
+        type="password", 
+        key="password_input", 
+        on_change=check_password
+    )
+    
+    st.markdown("---")
+    st.caption("© 2025 AI 軟體架構師 | 僅限授權人員使用")
+
+# [情境 B]：已經登入 -> 顯示完整功能
+else:
+    # --- 自動讀取 API Key ---
+    try:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        # 設定 Gemini
+        genai.configure(api_key=api_key)
+    except Exception as e:
+        st.error("⚠️ 系統錯誤：找不到 API Key，請檢查 secrets.toml 設定。")
+        st.stop()
+
+    # --- 側邊欄 (功能選單) ---
+    with st.sidebar:
+        st.success(f"✅ 歡迎回來，老師！")
+        st.info("🔑 API Key 已安全載入")
+        
+        st.markdown("---")
+        if st.button("🚪 登出系統"):
+            st.session_state.logged_in = False
+            st.rerun() # 重新整理頁面回到登入畫面
+
+    # --- 主畫面內容 ---
+    st.title("🏗️ AI 軟體架構師")
+    st.markdown("#### 從點子到藍圖，只要一瞬間")
+    
+    st.info("💡 這個工具會根據您的需求，自動生成軟體規格書、資料結構與開發清單。")
+
+    # 輸入區
+    product_idea = st.text_area(
+        "你的產品點子是什麼？", 
+        placeholder="例如：我想做一個專門給素食者的食譜分享 App，要有地圖功能、不含蛋奶的篩選器...",
+        height=150
+    )
+
+    # 執行按鈕
+    if st.button("🚀 開始生成架構藍圖", type="primary"):
+        if not product_idea:
+            st.warning("請先輸入您的產品點子！")
+        else:
+            with st.spinner("🤖 AI 架構師正在思考中，請稍候..."):
+                try:
+                    # 設定 AI 模型 (使用 Gemini Pro)
+                    model = genai.GenerativeModel('gemini-1.5-flash') # 或使用 gemini-pro
+                    
+                    # 設計 Prompt (提示詞)
+                    prompt = f"""
+                    你是一位資深的軟體架構師。請根據以下產品點子，生成一份專業的架構藍圖。
+                    請包含：1. 核心功能條列 2. 資料庫結構建議 3. 技術棧推薦 4. 開發階段規劃。
+                    
+                    產品點子：{product_idea}
+                    請用繁體中文回答，使用 Markdown 格式。
+                    """
+                    
+                    # 發送請求
+                    response = model.generate_content(prompt)
+                    
+                    # 顯示結果
+                    st.markdown("---")
+                    st.markdown("### 📄 生成結果")
+                    st.markdown(response.text)
+                    
+                except Exception as e:
+                    st.error(f"生成失敗，請檢查連線或額度。\n錯誤訊息：{e}")
