@@ -72,3 +72,57 @@ def create_project_zip(data):
 ## 1. 系統架構圖
 ```text
 {spec_content}
+````
+
+## 2\. 資料結構 (Data Schema)
+
+```json
+{data_schema}
+```
+
+"""
+
+```
+# 3. TODOLIST.md
+todo_p1 = data.get('todo_phase1', '')
+todo_p2 = data.get('todo_phase2', '')
+
+todo = f"""# ✅ 任務清單
+```
+
+## Phase 1: MVP (最小可行性產品)
+
+{todo\_p1}
+
+## Phase 2: Scale (擴充階段)
+
+{todo\_p2}
+"""
+
+```
+# 4. REPORT.md
+risk_log = data.get('risk_log', '')
+
+report = f"""# 📋 開發日誌 (Dev Report)
+```
+
+## 初始評估與風險
+
+{risk\_log}
+"""
+
+```
+# 執行打包動作
+buffer = io.BytesIO()
+with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("README.md", readme)
+    z.writestr("SPEC.md", spec)
+    z.writestr("TODOLIST.md", todo)
+    z.writestr("REPORT.md", report)
+
+buffer.seek(0)
+return buffer
+```
+
+```
+```
