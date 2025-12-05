@@ -14,10 +14,8 @@ def call_ai_architect(idea, api_key):
     genai.configure(api_key=api_key)
     
     # 嘗試使用最強模型，若無則降級
-    # 針對 Streamlit Cloud 可能找不到 1.5 的情況，增加 pro 為備援
     try:
         model = genai.GenerativeModel('gemini-1.5-pro')
-        # 簡單測試連線
         model.generate_content("test")
     except:
         try:
@@ -63,6 +61,7 @@ def create_project_zip(data):
 """
 
     # 2. SPEC.md
+    # 注意：這裡的 JSON 需要轉成字串才能放入 f-string
     spec = f"""# 📐 技術規格書
 
 ## 1. 系統架構圖
