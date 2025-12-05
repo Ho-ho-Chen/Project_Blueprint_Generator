@@ -7,7 +7,7 @@ import generator_engine as engine
 config.setup_page()
 
 # ==========================================
-# 👇 CSS 優化：隱藏 Streamlit 原生選單 + 頂部凍結設定
+# 👇 CSS 優化：只保留隱藏選單功能，移除導致破圖的置頂設定
 # ==========================================
 st.markdown("""
     <style>
@@ -15,22 +15,10 @@ st.markdown("""
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-
-    /* 2. 定義頂部凍結區域的樣式 (Sticky Header) */
-    /* 使用 sticky 可以讓它黏在頂部，但不會蓋住側邊欄 */
-    div.block-container {
-        padding-top: 0rem; /* 為了讓 Header 貼頂，減少預設留白 */
-    }
     
-    .sticky-header-container {
-        position: sticky;
-        top: 0;
-        z-index: 999;
-        background-color: #0e1117; /* 深色背景，避免透明 */
-        padding-top: 15px;
-        padding-bottom: 15px;
-        border-bottom: 1px solid #333;
-        margin-bottom: 20px;
+    /* 調整按鈕在頂部的垂直對齊 */
+    div[data-testid="stHorizontalBlock"] {
+        align-items: center;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -62,25 +50,23 @@ else:
     engine.configure_genai(api_key)
 
     # ==========================================
-    # 👇 關鍵修復：把側邊欄 (Sidebar) 加回來了！
+    # 👇 側邊欄 (Sidebar)
     # ==========================================
     with st.sidebar:
-        st.success("✅ 驗證通過，歡迎老師！")
-        st.info("💡 連線模式：HTTP 直連 (雙語版)") 
+        st.success("✅ 驗證通過")
+        st.info("💡 模式：HTTP 直連 (雙語版)") 
         st.markdown("---")
         # 登出按鈕
         if st.button("🔒 登出系統"):
             st.session_state.logged_in = False
-            # 清除所有狀態並重整
+            # 清除所有狀態
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
 
     # ==========================================
-    # 👇 頂部凍結中控台 (Sticky Control Panel)
+    # 👇 頂部中控台 (正常佈局，不再強制置頂以免遮擋)
     # ==========================================
-    # 我們用一個 div 包起來，套用上面的 CSS class
-    st.markdown('<div class="sticky-header-container">', unsafe_allow_html=True)
     
     c_title, c_btns = st.columns([1.5, 2.5])
     
@@ -91,10 +77,12 @@ else:
         # 放置四個功能按鈕
         b1, b2, b3, b4 = st.columns(4)
         
-        # Button 1: 生成藍圖 (提交問卷)
+        # Button 1: 生成藍圖
         with b1:
             is_disabled_1 = (st.session_state.workflow_stage != 1)
-            if st.button("1.生成藍圖", disabled=is_disabled_1, key="btn_step1", help="填寫完問卷後點擊"):
+            # 使用 help 提示當前狀態
+            help_msg = "請先填寫下方構想並開始諮詢" if st.session_state.workflow_stage == 0 else "點擊生成規格書"
+            if st.button("1.生成藍圖", disabled=is_disabled_1, key="btn_step1", help=help_msg):
                 st.session_state.trigger_blueprint = True
         
         # Button 2: 生成架構
@@ -115,13 +103,12 @@ else:
         with b4:
             if st.button("4.新專案", type="primary"):
                 st.session_state.workflow_stage = 0
-                keys_to_reset = ["questions", "result_files", "structure_res", "project_name", "project_desc"]
+                keys_to_reset = ["questions", "result_files", "structure_res", "project_name", "project_desc", "ans_fe", "ans_be", "ans_db"]
                 for k in keys_to_reset:
                     if k in st.session_state: del st.session_state[k]
                 st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True) 
-    # ☝️ 結束凍結區域
+    st.markdown("---") # 分隔線
 
     # ----------------------------------------------------
     # 🔄 智慧引導流程 (Main Workflow)
@@ -139,9 +126,7 @@ else:
             
             if st.form_submit_button("🤖 開始諮詢 (AI 分析需求)"):
                 with st.spinner("正在分析您的點子並設計問卷..."):
-                    # 呼叫 engine
                     questions = engine.generate_interview_questions(p_name, p_desc)
-                    
                     if "error" in questions:
                         st.error(questions["error"])
                     else:
@@ -159,21 +144,28 @@ else:
         
         q_data = st.session_state.questions
         
+        # 使用 columns 排版問卷，讓畫面不那麼擁擠
         c_q1, c_q2, c_q3 = st.columns(3)
         with c_q1:
             st.info(f"**前端/介面：**\n{q_data.get('q_frontend', '無問題')}")
-            ans_fe = st.text_area("您的回答 (Frontend)", key="ans_fe", height=150)
+            # 使用 key 來自動綁定 session_state
+            st.text_area("您的回答 (Frontend)", key="ans_fe", height=150)
         with c_q2:
             st.info(f"**後端/邏輯：**\n{q_data.get('q_backend', '無問題')}")
-            ans_be = st.text_area("您的回答 (Backend)", key="ans_be", height=150)
+            st.text_area("您的回答 (Backend)", key="ans_be", height=150)
         with c_q3:
             st.info(f"**資料/儲存：**\n{q_data.get('q_database', '無問題')}")
-            ans_db = st.text_area("您的回答 (Database)", key="ans_db", height=150)
+            st.text_area("您的回答 (Database)", key="ans_db", height=150)
             
-        st.warning("👉 請填寫完畢後，點擊上方的 **「1.生成藍圖」** 按鈕。")
+        st.warning("👉 請填寫完畢後，點擊上方頂部的 **「1.生成藍圖」** 按鈕。")
 
         # 處理頂部按鈕觸發
         if st.session_state.get("trigger_blueprint"):
+            # 從 session_state 獲取用戶剛剛輸入的回答
+            ans_fe = st.session_state.get("ans_fe", "")
+            ans_be = st.session_state.get("ans_be", "")
+            ans_db = st.session_state.get("ans_db", "")
+            
             full_req = f"""
             專案名稱：{st.session_state.project_name}
             原始構想：{st.session_state.project_desc}
@@ -225,4 +217,11 @@ else:
                 st.markdown("#### 🔄 流程圖")
                 mermaid = s_data.get("FLOW.mermaid", "")
                 if mermaid:
-                    st.markdown(f"```mermaid\n{mermaid}\n```")
+                    # 使用 Streamlit 原生 Markdown 渲染 Mermaid
+                    st.markdown(f"""
+                    ```mermaid
+                    {mermaid}
+                    ```
+                    """)
+                else:
+                    st.warning("流程圖生成失敗，請重試")
