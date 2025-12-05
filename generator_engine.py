@@ -1,14 +1,20 @@
-import requests  # 關鍵：使用 requests，不使用 google.generativeai
+import requests
 import re
 import streamlit as st
 import json
-import zipfile  # 新增：用於打包下載
-import io       # 新增：用於處理二進位流
-import time     # 新增：用於重試時的延遲
+import zipfile
+import io
+import time
 
 def configure_genai(api_key):
     # 只存 Key，不設定 SDK
     st.session_state.api_key_proxy = api_key
+
+def get_api_key():
+    api_key = st.session_state.get("api_key_proxy", "")
+    if not api_key:
+        api_key = st.secrets.get("GOOGLE_API_KEY", "")
+    return api_key
 
 # ==========================================
 # 👇 新增：強固型 API 呼叫函式 (處理 429 錯誤)
@@ -62,14 +68,10 @@ def call_gemini_api_robust(prompt_text, api_key):
 
 def generate_blueprint(product_idea):
     # 1. 取得 Key
-    api_key = st.session_state.get("api_key_proxy", "")
-    if not api_key:
-        api_key = st.secrets.get("GOOGLE_API_KEY", "")
+    api_key = get_api_key()
+    if not api_key: return {"error": "⚠️ API Key 遺失，請檢查 secrets.toml"}
 
-    if not api_key:
-        return {"error": "⚠️ API Key 遺失，請檢查 secrets.toml"}
-
-    # 2. 準備 Prompt (保持不變)
+    # 2. 準備 Prompt
     prompt_text = f"""
     你是一位菁英軟體架構師。請根據以下專案需求，生成標準的軟體開發文件。
     
@@ -88,12 +90,12 @@ def generate_blueprint(product_idea):
     """
 
     try:
-        # 3. 改用強固呼叫 (取代原本直接 requests.post)
+        # 3. 改用強固呼叫
         result_json, used_model = call_gemini_api_robust(prompt_text, api_key)
         
         text_content = result_json['candidates'][0]['content']['parts'][0]['text']
 
-        # 4. 切分檔案 (保持不變)
+        # 4. 切分檔案
         files = {}
         patterns = {
             "README.md": r"====FILE: README\.md====\n(.*?)(?====FILE:|$)",
@@ -136,14 +138,10 @@ def generate_structure(context_text):
     【新功能 2】Step 2: 根據上面的文件，生成檔案結構樹與流程圖
     """
     # 1. 取得 Key
-    api_key = st.session_state.get("api_key_proxy", "")
-    if not api_key:
-        api_key = st.secrets.get("GOOGLE_API_KEY", "")
+    api_key = get_api_key()
+    if not api_key: return {"STRUCTURE.txt": "API Key 遺失", "FLOW.mermaid": ""}
 
-    if not api_key:
-        return {"STRUCTURE.txt": "API Key 遺失", "FLOW.mermaid": ""}
-
-    # 2. 準備 Prompt (保持不變)
+    # 2. 準備 Prompt
     prompt = f"""
     你是一位資深全端工程師。我們已經規劃好一份軟體規格：
     
@@ -185,4 +183,12 @@ def generate_structure(context_text):
             if match:
                 content = match.group(1).strip()
                 # 清理可能多餘的 markdown 符號
-                content = content.replace
+                content = content.replace("```mermaid", "").replace("```", "")
+                result[k] = content
+            else:
+                result[k] = "生成失敗"
+                
+        return result
+
+    except Exception as e:
+        return {"STRUCTURE.txt": f"系統錯誤: {str(e)}", "FLOW.mermaid": ""}
