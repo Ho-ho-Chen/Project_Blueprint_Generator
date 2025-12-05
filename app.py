@@ -1,87 +1,88 @@
 # ==========================================
-# app.py: 架構產生器主程式
+# app.py: 前端介面 (Streamlit)
 # ==========================================
 import streamlit as st
-import time
-import datetime
-from config import DEFAULT_BLUEPRINT
+import os
 from generator_engine import call_ai_architect, create_project_zip
 
-st.set_page_config(page_title="AI 架構師", page_icon="🏗️", layout="wide")
+# 1. 設定頁面基礎資訊
+st.set_page_config(
+    page_title="AI 軟體架構生成器",
+    page_icon="🏗️",
+    layout="centered"
+)
 
-# 初始化
-if 'blueprint' not in st.session_state:
-    st.session_state['blueprint'] = DEFAULT_BLUEPRINT
-
-# --- 側邊欄 ---
+# 2. 側邊欄：設定 API Key
 with st.sidebar:
-    st.title("🏗️ AI 架構師")
-    
-    # API Key (優先讀 Secrets)
-    api_key = None
-    try:
-        if st.secrets and "GOOGLE_API_KEY" in st.secrets:
-            api_key = st.secrets["GOOGLE_API_KEY"]
-            st.success("✅ Key 已載入")
-    except: pass
-    
-    if not api_key:
-        api_key = st.text_input("🔑 API Key", type="password")
-
-    st.divider()
-    st.header("💡 您的點子 (Idea)")
-    user_idea = st.text_area("你想做什麼？", "例如：一個幫忙自動記帳並分析消費習慣的 Line 機器人", height=150)
-    
-    if st.button("✨ 生成藍圖", type="primary", use_container_width=True):
-        if not api_key:
-            st.error("請輸入 API Key")
-        else:
-            with st.spinner("AI 架構師正在繪圖..."):
-                data = call_ai_architect(user_idea, api_key)
-                if data and "error" not in data:
-                    st.session_state['blueprint'] = data
-                    st.success("完成！")
-                    time.sleep(0.5)
-                    st.rerun()
-                else:
-                    st.error(f"失敗: {data.get('error', '未知錯誤')}")
-
-    st.divider()
-    
-    # 下載區
-    bp = st.session_state['blueprint']
-    zip_buffer = create_project_zip(bp)
-    st.download_button(
-        label="📦 下載全套文件 (.zip)",
-        data=zip_buffer,
-        file_name=f"{bp.get('project_name', 'Project')}_Docs.zip",
-        mime="application/zip"
+    st.header("🔑 設定")
+    api_key = st.text_input(
+        "輸入 Google Gemini API Key", 
+        type="password",
+        help="請到 Google AI Studio 申請免費 Key"
     )
+    st.markdown("---")
+    st.markdown("### 關於本工具")
+    st.info("這是一個 AI 輔助架構設計工具。輸入點子，自動生成規格書、資料結構與開發清單。")
 
-# --- 主畫面 ---
-bp = st.session_state['blueprint']
+# 3. 主畫面：標題與輸入區
+st.title("🏗️ AI 軟體架構師")
+st.markdown("### 從點子到藍圖，只要一瞬間")
 
-st.header(f"📐 {bp.get('project_name', '新專案')}")
+# 使用者輸入點子
+idea = st.text_area(
+    "💡 你的產品點子是什麼？", 
+    height=150,
+    placeholder="例如：我想做一個專門給素食者的食譜分享 App，要有地圖功能..."
+)
 
-tab1, tab2, tab3, tab4 = st.tabs(["📄 README", "📐 SPEC", "✅ TODO", "📝 REPORT"])
+# 4. 執行邏輯
+generate_btn = st.button("🚀 開始生成架構藍圖", type="primary")
 
-with tab1:
-    c1, c2 = st.columns(2)
-    with c1:
-        bp['project_name'] = st.text_input("專案名稱", bp.get('project_name'))
-        bp['description'] = st.text_area("專案描述", bp.get('description'), height=200)
-    with c2:
-        bp['values'] = st.text_area("核心價值", bp.get('values'), height=100)
-        bp['tech_stack'] = st.text_area("技術棧", bp.get('tech_stack'), height=100)
+if generate_btn:
+    # 檢查是否都有填寫
+    if not api_key:
+        st.warning("⚠️ 請先在側邊欄輸入你的 Google API Key")
+    elif not idea:
+        st.warning("⚠️ 請輸入你的產品點子")
+    else:
+        # 顯示載入動畫
+        with st.spinner("🤖 AI 架構師正在思考中... (約需 15-30 秒)"):
+            # 呼叫後端引擎 (generator_engine.py)
+            result = call_ai_architect(idea, api_key)
 
-with tab2:
-    c1, c2 = st.columns(2)
-    with c1: bp['structure_tree'] = st.text_area("檔案結構", bp.get('structure_tree'), height=300)
-    with c2: bp['data_schema'] = st.text_area("資料結構", str(bp.get('data_schema')), height=300)
+            # 錯誤處理
+            if not result:
+                st.error("❌ 未知錯誤，請檢查網路或 API Key。")
+            elif "error" in result:
+                st.error(f"❌ 發生錯誤：{result['error']}")
+            else:
+                # 成功！顯示結果
+                st.success("✅ 架構生成完畢！")
+                
+                # 顯示專案名稱與簡介
+                st.subheader(f"專案：{result.get('project_name', '未命名專案')}")
+                st.write(result.get('description', ''))
+                
+                # 使用 Expander 收折詳細資訊，避免版面太亂
+                with st.expander("查看技術棧 (Tech Stack)"):
+                    st.write(result.get('tech_stack', ''))
+                
+                with st.expander("查看開發任務 (Todo List)"):
+                    st.write("### Phase 1")
+                    st.write(result.get('todo_phase1', ''))
+                    st.write("### Phase 2")
+                    st.write(result.get('todo_phase2', ''))
 
-with tab3:
-    bp['todo_phase1'] = st.text_area("Phase 1 任務", bp.get('todo_phase1'), height=200)
-    bp['todo_phase2'] = st.text_area("Phase 2 任務", bp.get('todo_phase2'), height=200)
-
-with tab4:
-    bp['risk_log'] = st.text_area("風險與筆記", bp.get('risk_log'), height=300)
+                # 產生 ZIP 檔案
+                zip_buffer = create_project_zip(result)
+                
+                if zip_buffer:
+                    # 下載按鈕
+                    st.download_button(
+                        label="📥 下載完整專案包 (ZIP)",
+                        data=zip_buffer,
+                        file_name=f"{result.get('project_name', 'project')}_blueprint.zip",
+                        mime="application/zip"
+                    )
+                else:
+                    st.error("打包 ZIP 失敗。")
