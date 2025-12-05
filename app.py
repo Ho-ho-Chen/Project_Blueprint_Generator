@@ -1,13 +1,13 @@
 import streamlit as st
 import config
-import auth # 保留引用，但登入邏輯我們在 app.py 直接寫比較安全
+import auth 
 import generator_engine as engine
 
 # --- 1. 初始化頁面 ---
 config.setup_page()
 
 # ==========================================
-# 👇 新增建議修改：隱藏 Streamlit 預設選單與按鈕
+# 👇 優化 1：視覺隱藏 Manage App 按鈕與選單
 #    這能讓一般使用者看不到右下角的 "Manage App"
 #    以及右上角的開發者選單，讓介面更像一個獨立 App
 # ==========================================
@@ -16,10 +16,10 @@ st.markdown("""
     /* 隱藏右下角的 Manage App 按鈕 */
     .stDeployButton {display:none;}
     
-    /* (選用) 隱藏右上角的三點選單，若您需要調試可註解掉下面這行 */
+    /* 隱藏右上角的三點選單 (Deploy, Settings 等) */
     #MainMenu {visibility: hidden;}
     
-    /* (選用) 隱藏底部的 Streamlit 浮水印 */
+    /* 隱藏底部的 Streamlit 浮水印 */
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -61,8 +61,7 @@ if not st.session_state.logged_in:
 else:
     # 🔓 [解鎖狀態]：以下為您原本的完整程式碼
     
-    # 取得 API Key (從 config 或 secrets 拿)
-    # 這裡我們手動拿 Key，確保拿到的是正確的
+    # 取得 API Key
     api_key = st.secrets.get("GOOGLE_API_KEY", "")
     
     # 傳遞 Key 給引擎
@@ -70,10 +69,10 @@ else:
     
     with st.sidebar:
         st.success("✅ 驗證通過，歡迎老師！")
-        st.info("💡 連線模式：HTTP 直連 (強製版)") 
+        st.info("💡 連線模式：HTTP 直連 (雙語版)") 
         st.markdown("---")
         
-        # 自製的登出按鈕 (取代 auth.logout_button)
+        # 自製的登出按鈕
         if st.button("🔒 登出系統"):
             st.session_state.logged_in = False
             st.rerun()
@@ -105,13 +104,17 @@ else:
             if "error" in result_files:
                 st.error(result_files["error"])
             else:
-                # 將結果存入 Session State，這樣按按鈕後資料才不會消失
                 st.session_state.result_files = result_files
                 st.session_state.step1_done = True
+                
+                # 👇 優化：若重新生成 Step 1，則重置 Step 2 狀態，避免資料不一致
+                if "step2_done" in st.session_state:
+                    del st.session_state.step2_done
+                    del st.session_state.structure_res
+                
                 st.success("🎉 文件生成成功！")
 
     # --- 顯示 Step 1 結果 & 新增功能入口 ---
-    # 使用 session_state 來判斷是否顯示，確保互動時畫面不消失
     if st.session_state.get("step1_done"):
         result_files = st.session_state.result_files
         
@@ -142,18 +145,26 @@ else:
             )
 
         with col_step2:
-            # Step 2 觸發按鈕
-            if st.button("🏗️ Step 2: 生成檔案架構與流程圖"):
-                with st.spinner("正在根據規格書繪製架構圖..."):
-                    # 把 README 和 SPEC 傳給 AI 當作背景知識
-                    context = result_files.get("README.md", "") + "\n" + result_files.get("SPEC.md", "")
-                    structure_res = engine.generate_structure(context)
-                    
-                    if "STRUCTURE.txt" in structure_res:
-                        st.session_state.structure_res = structure_res
-                        st.session_state.step2_done = True
-                    else:
-                        st.error("架構生成失敗，請重試")
+            # 👇 優化：按鈕邏輯判斷 (避免按鈕一直重複出現)
+            # 狀態 A: Step 2 還沒做 -> 顯示「生成」按鈕
+            if not st.session_state.get("step2_done"):
+                if st.button("🏗️ Step 2: 生成檔案架構與流程圖"):
+                    with st.spinner("正在根據規格書繪製架構圖..."):
+                        context = result_files.get("README.md", "") + "\n" + result_files.get("SPEC.md", "")
+                        structure_res = engine.generate_structure(context)
+                        
+                        if "STRUCTURE.txt" in structure_res:
+                            st.session_state.structure_res = structure_res
+                            st.session_state.step2_done = True
+                            st.rerun() # 重新整理頁面，讓按鈕消失，直接顯示下方結果
+                        else:
+                            st.error("架構生成失敗，請重試")
+            
+            # 狀態 B: Step 2 做完了 -> 顯示「重新生成」按鈕
+            else:
+                if st.button("🔄 重新生成架構"):
+                    st.session_state.step2_done = False
+                    st.rerun()
 
     # --- 顯示 Step 2 結果 (視覺化) ---
     if st.session_state.get("step2_done") and "structure_res" in st.session_state:
