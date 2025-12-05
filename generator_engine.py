@@ -17,7 +17,7 @@ def get_api_key():
     return api_key
 
 # ==========================================
-# 👇 核心修復：超級模型人海戰術
+# 👇 核心修復：超級模型人海戰術 (The Human Wave)
 # ==========================================
 def call_gemini_api_robust(prompt_text, api_key):
     """
@@ -196,4 +196,5 @@ def generate_structure(context_text):
         return result
 
     except Exception as e:
+        # ⚠️ 關鍵修復：這裡補上了原本截圖中缺失的 except 區塊
         return {"STRUCTURE.txt": f"系統錯誤: {str(e)}", "FLOW.mermaid": ""}
