@@ -1,4 +1,4 @@
-import requests
+import requests  # 關鍵：使用 requests，不使用 google.generativeai
 import re
 import streamlit as st
 import json
@@ -17,22 +17,36 @@ def get_api_key():
     return api_key
 
 # ==========================================
-# 👇 核心修復：模型人海戰術清單
+# 👇 核心修復：超級模型人海戰術
 # ==========================================
 def call_gemini_api_robust(prompt_text, api_key):
     """
-    策略：嘗試所有可能的模型名稱，直到成功為止。
-    這能解決 404 (找不到模型) 與 429 (額度滿) 的所有問題。
+    策略：依照「智力高 -> 速度快 -> 穩定舊版」的順序嘗試所有可用模型。
+    只要其中任何一個能通，程式就會成功！
     """
-    # 定義模型優先順序 (包含最新的、最快的、最舊但最穩的)
+    # 這是您帳號專屬的超級白名單 (依照推薦順序排列)
     model_candidates = [
-        "gemini-2.0-flash-exp",      # 首選：最新 2.0
-        "gemini-1.5-flash",          # 次選：主流 1.5 Flash
-        "gemini-1.5-flash-latest",   # 備選：Flash 最新別名
-        "gemini-1.5-flash-001",      # 備選：Flash 固定版本
-        "gemini-1.5-pro",            # 備選：1.5 Pro (比較慢但聰明)
-        "gemini-1.5-pro-latest",     # 備選：Pro 最新別名
-        "gemini-pro"                 # 保底：1.0 Pro (最舊但絕對存在，不死鳥)
+        # --- Tier 1: 最強大腦 / 最新預覽 (優先嘗試) ---
+        "gemini-3-pro-preview",
+        "gemini-2.5-pro",
+        "gemini-2.0-pro-exp-02-05",
+        "gemini-2.0-pro-exp",
+        "gemini-exp-1206",
+        
+        # --- Tier 2: 極速與平衡 (Flash 系列) ---
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-exp", # 許多新功能都在這
+        "gemini-1.5-flash",     # 最穩定且額度高
+        "gemini-flash-latest",
+        
+        # --- Tier 3: 輕量版 (Lite) ---
+        "gemini-2.0-flash-lite-preview-02-05",
+        "gemini-2.5-flash-lite",
+        
+        # --- Tier 4: 保底舊版 (不死鳥) ---
+        "gemini-1.5-pro",
+        "gemini-pro"
     ]
     
     last_error = ""
@@ -49,15 +63,17 @@ def call_gemini_api_robust(prompt_text, api_key):
             
             # 如果成功 (200)，直接回傳 JSON 與使用的模型名稱
             if response.status_code == 200:
+                # 成功了！告訴前端是哪個模型立大功
                 return response.json(), model_name
             
             # 錯誤代碼處理
             error_msg = f"Error {response.status_code}: {response.text}"
             
-            # 404 (找不到模型) 或 429 (額度滿) 或 503 (忙碌) -> 換下一個
+            # 404 (找不到), 429 (額度滿), 503 (忙碌) -> 換下一個
             if response.status_code in [404, 429, 503]:
-                print(f"⚠️ 模型 {model_name} 無法使用 ({response.status_code})，切換下一個...")
-                time.sleep(0.5) # 稍微緩衝
+                # 在後台印出訊息方便除錯 (Streamlit 介面不會顯示，保持乾淨)
+                print(f"⚠️ 模型 {model_name} 跳過 ({response.status_code})")
+                time.sleep(0.2) # 極短暫緩衝
                 last_error = error_msg
                 continue
             
@@ -68,8 +84,8 @@ def call_gemini_api_robust(prompt_text, api_key):
             last_error = str(e)
             continue
             
-    # 如果迴圈跑完都沒成功，拋出例外
-    raise Exception(f"所有模型皆嘗試失敗。請檢查 API Key 是否正確。最後錯誤: {last_error}")
+    # 如果幾十個模型全部失敗 (機率極低)，才拋出例外
+    raise Exception(f"所有 {len(model_candidates)} 個模型皆嘗試失敗。請檢查 API Key 權限。最後錯誤: {last_error}")
 
 # ==========================================
 # 👇 主功能區
@@ -118,7 +134,7 @@ def generate_blueprint(product_idea):
             files[filename] = match.group(1).strip() if match else f"⚠️ {filename} 生成遺失"
 
         # 標記實際使用的模型
-        files["_model_used"] = f"{used_model} (Auto-Switch)"
+        files["_model_used"] = f"{used_model}"
         return files
 
     except Exception as e:
