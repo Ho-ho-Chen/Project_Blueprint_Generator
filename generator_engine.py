@@ -1,5 +1,5 @@
 # ==========================================
-# generator_engine.py: 核心邏輯與工具
+# generator_engine.py: 核心邏輯
 # ==========================================
 import google.generativeai as genai
 import json
@@ -12,11 +12,11 @@ def call_ai_architect(idea, api_key):
     if not api_key: return None
     
     genai.configure(api_key=api_key)
-    # 嘗試使用最強模型，若無則降級
+    # 嘗試使用最強模型
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
-    except:
         model = genai.GenerativeModel('gemini-1.5-pro')
+    except:
+        model = genai.GenerativeModel('gemini-pro')
 
     prompt = ARCHITECT_PROMPT.format(idea=idea)
     
