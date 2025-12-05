@@ -1,5 +1,5 @@
 # ==========================================
-# generator_engine.py: 核心邏輯與打包工具 (v2.4)
+# generator_engine.py: 核心邏輯與打包工具 (v2.4 Fix)
 # ==========================================
 import google.generativeai as genai
 import json
@@ -14,9 +14,11 @@ def call_ai_architect(idea, api_key):
     genai.configure(api_key=api_key)
     
     # 嘗試使用最強模型，若無則降級
+    model = None
     try:
         # 嘗試連線 1.5-pro
         model = genai.GenerativeModel('gemini-1.5-pro')
+        # 簡單測試連線 (可選，避免浪費 token 可以省略，但在這裡是為了確認模型可用)
         model.generate_content("test")
     except:
         try:
@@ -35,10 +37,13 @@ def call_ai_architect(idea, api_key):
         response = model.generate_content(prompt)
         # 清洗 JSON (移除 Markdown 標記)
         json_str = response.text.strip()
+        
+        # 處理 ```json 包裹的情況
         if json_str.startswith("```json"):
             json_str = json_str.replace("```json", "", 1)
-        if json_str.startswith("```"):
+        elif json_str.startswith("```"):
             json_str = json_str.replace("```", "", 1)
+            
         if json_str.endswith("```"):
             json_str = json_str[:-3]
             
@@ -49,9 +54,23 @@ def call_ai_architect(idea, api_key):
 def create_project_zip(data):
     """將 4 份文件打包成 ZIP"""
     
+    # 錯誤處理：如果傳入的是錯誤訊息
+    if "error" in data:
+        return None
+
+    # Helper: 安全地將資料轉為易讀的字串
+    def format_content(content, is_json=False):
+        if not content:
+            return ""
+        if is_json:
+            if isinstance(content, str):
+                return content
+            return json.dumps(content, indent=2, ensure_ascii=False)
+        return str(content)
+
     # 1. README.md
     readme = f"""# {data.get('project_name', 'Project')}
-    
+
 ## 📖 專案描述
 {data.get('description', '')}
 
@@ -63,66 +82,12 @@ def create_project_zip(data):
 """
 
     # 2. SPEC.md
-    # 注意：將 list 或 dict 轉為字串，避免 f-string 報錯
-    spec_content = data.get('structure_tree', '')
-    data_schema = str(data.get('data_schema', '{}'))
+    # 處理資料結構，確保如果是 dict/list 會漂亮顯示
+    spec_content = format_content(data.get('structure_tree', ''), is_json=False)
+    data_schema = format_content(data.get('data_schema', {}), is_json=True)
     
     spec = f"""# 📐 技術規格書
 
 ## 1. 系統架構圖
 ```text
 {spec_content}
-````
-
-## 2\. 資料結構 (Data Schema)
-
-```json
-{data_schema}
-```
-
-"""
-
-```
-# 3. TODOLIST.md
-todo_p1 = data.get('todo_phase1', '')
-todo_p2 = data.get('todo_phase2', '')
-
-todo = f"""# ✅ 任務清單
-```
-
-## Phase 1: MVP (最小可行性產品)
-
-{todo\_p1}
-
-## Phase 2: Scale (擴充階段)
-
-{todo\_p2}
-"""
-
-```
-# 4. REPORT.md
-risk_log = data.get('risk_log', '')
-
-report = f"""# 📋 開發日誌 (Dev Report)
-```
-
-## 初始評估與風險
-
-{risk\_log}
-"""
-
-```
-# 執行打包動作
-buffer = io.BytesIO()
-with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
-    z.writestr("README.md", readme)
-    z.writestr("SPEC.md", spec)
-    z.writestr("TODOLIST.md", todo)
-    z.writestr("REPORT.md", report)
-
-buffer.seek(0)
-return buffer
-```
-
-```
-```
