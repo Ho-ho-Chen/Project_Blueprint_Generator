@@ -17,7 +17,7 @@ def get_api_key():
     return api_key
 
 # ==========================================
-# 👇 核心修復：超級模型人海戰術 (The Human Wave)
+# 👇 核心修復：超級模型人海戰術
 # ==========================================
 def call_gemini_api_robust(prompt_text, api_key):
     """
@@ -71,7 +71,6 @@ def call_gemini_api_robust(prompt_text, api_key):
             
             # 404 (找不到), 429 (額度滿), 503 (忙碌) -> 換下一個
             if response.status_code in [404, 429, 503]:
-                # 在後台印出訊息方便除錯 (Streamlit 介面不會顯示，保持乾淨)
                 print(f"⚠️ 模型 {model_name} 跳過 ({response.status_code})")
                 time.sleep(0.2) # 極短暫緩衝
                 last_error = error_msg
@@ -96,22 +95,28 @@ def generate_blueprint(product_idea):
     api_key = get_api_key()
     if not api_key: return {"error": "⚠️ API Key 遺失，請檢查 secrets.toml"}
 
-    # 2. 準備 Prompt
+    # 2. 準備 Prompt (這裡修改為雙語版)
     prompt_text = f"""
     你是一位菁英軟體架構師。請根據以下專案需求，生成標準的軟體開發文件。
     
+    【專案需求】：
     {product_idea}
 
+    【輸出要求】：
+    1. **請務必使用「繁體中文 (Traditional Chinese) + 英文 (English)」雙語對照的方式撰寫內容。**
+    2. 標題與重點描述都必須有雙語 (例如：專案介紹 / Project Introduction)。
+    3. 專業術語請保留英文並在括號中加上中文說明。
+    
     【請嚴格依照以下格式輸出四個檔案區塊，不要有開場白】：
     
     ====FILE: README.md====
-    (內容...)
+    (內容包含：專案標題、描述、安裝指南、技術棧清單 - 雙語版)
     ====FILE: SPEC.md====
-    (內容包含 Mermaid 圖表...)
+    (內容包含：詳細規格、API 端點定義、Mermaid 圖表 - 雙語版)
     ====FILE: REPORT.md====
-    (內容...)
+    (內容包含：開發評估報告、預期遇到的技術難點、解決方案分析 - 雙語版)
     ====FILE: TODOLIST.md====
-    (內容...)
+    (內容包含：條列式開發任務清單 - 雙語版)
     """
 
     try:
@@ -157,17 +162,19 @@ def generate_structure(context_text):
     api_key = get_api_key()
     if not api_key: return {"STRUCTURE.txt": "API Key 遺失", "FLOW.mermaid": ""}
 
-    # 2. 準備 Prompt
+    # 2. 準備 Prompt (這裡修改為雙語版)
     prompt = f"""
     你是一位資深全端工程師。我們已經規劃好一份軟體規格：
     
     {context_text[:6000]} (擷取重點)
     
     請幫我設計這個專案的實體架構與運作流程。
+    請務必使用「繁體中文 + 英文」雙語進行資料夾結構的註解說明。
+    
     請嚴格依照以下格式輸出兩個區塊：
 
     ====FILE: STRUCTURE.txt====
-    (請用 ASCII Tree 格式列出專案資料夾結構)
+    (請用 ASCII Tree 格式列出專案資料夾結構，並在旁邊加上中文/英文註解)
 
     ====FILE: FLOW.mermaid====
     (請寫一段 Mermaid JS 的 Sequence Diagram [序列圖] 代碼，開頭必須是 sequenceDiagram)
@@ -196,5 +203,4 @@ def generate_structure(context_text):
         return result
 
     except Exception as e:
-        # ⚠️ 關鍵修復：這裡補上了原本截圖中缺失的 except 區塊
         return {"STRUCTURE.txt": f"系統錯誤: {str(e)}", "FLOW.mermaid": ""}
