@@ -1,24 +1,65 @@
 import streamlit as st
 import config
-import auth
+import auth # 保留引用，但登入邏輯我們在 app.py 直接寫比較安全
 import generator_engine as engine
 
-# --- 1. 初始化與登入 ---
+# --- 1. 初始化頁面 ---
 config.setup_page()
-api_key, app_password = config.get_credentials()
-auth.init_session_state()
 
-if not auth.is_logged_in():
-    auth.login_page(app_password)
+# ==========================================
+# 👇 加入建議修改：簡易密碼鎖 (The Lock)
+#    直接在主程式攔截，比呼叫外部檔案更直觀安全
+# ==========================================
+
+# 1. 初始化登入狀態
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+def check_login():
+    """驗證密碼函式"""
+    user_pass = st.session_state.get("password_input", "")
+    # 嘗試讀取 APP_PASSWORD (新建議)，如果沒有則讀取舊的 app_password，再沒有則預設
+    secret_pass = st.secrets.get("APP_PASSWORD", st.secrets.get("app_password", "12345678"))
+    
+    if user_pass == secret_pass:
+        st.session_state.logged_in = True
+        st.session_state.password_input = "" # 清除輸入框
+    else:
+        st.error("❌ 密碼錯誤，請重新輸入")
+
+# 2. 判斷是否鎖定
+if not st.session_state.logged_in:
+    # 🔒 [鎖定狀態]
+    st.markdown("## 🔒 系統鎖定中")
+    st.info("為了保護 API 資源與設定，請輸入授權密碼以繼續。")
+    
+    st.text_input(
+        "請輸入密碼：", 
+        type="password", 
+        key="password_input", 
+        on_change=check_login
+    )
+    st.caption("Hint: 請確認 Secrets 中已設定 APP_PASSWORD")
+
 else:
+    # 🔓 [解鎖狀態]：以下為您原本的完整程式碼
+    
+    # 取得 API Key (從 config 或 secrets 拿)
+    # 這裡我們手動拿 Key，確保拿到的是正確的
+    api_key = st.secrets.get("GOOGLE_API_KEY", "")
+    
     # 傳遞 Key 給引擎
     engine.configure_genai(api_key)
     
     with st.sidebar:
-        st.success("✅ 歡迎回來，老師！")
-        st.info("💡 連線模式：HTTP 直連 (強製版)") # 保留您原本的確認文字
+        st.success("✅ 驗證通過，歡迎老師！")
+        st.info("💡 連線模式：HTTP 直連 (強製版)") 
         st.markdown("---")
-        auth.logout_button()
+        
+        # 自製的登出按鈕 (取代 auth.logout_button)
+        if st.button("🔒 登出系統"):
+            st.session_state.logged_in = False
+            st.rerun()
 
     st.title("🏗️ PolyGlot 架構生成器")
 
