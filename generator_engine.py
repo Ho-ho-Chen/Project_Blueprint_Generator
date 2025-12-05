@@ -1,42 +1,40 @@
-import requests
-import json
+import requests # 改用標準網頁請求，不依賴 Google SDK
 import re
+import json
 import streamlit as st
-
-# 全域變數用來暫存 Key
-_API_KEY = None
 
 def configure_genai(api_key):
     """
-    設定 API Key
-    注意：這裡我們只把 Key 存起來，不呼叫 genai.configure，避免觸發舊版套件錯誤
+    因為改用 direct REST API，這裡不需要做 SDK 的設定，
+    但為了保持 app.py 不用改，我們保留這個函式，存下 key 即可。
     """
-    global _API_KEY
-    _API_KEY = api_key
+    st.session_state.api_key_proxy = api_key
 
 def generate_blueprint(product_idea):
     """
-    使用原始 HTTP 請求 (REST API) 呼叫 Gemini
-    這種方式不依賴 google-generativeai 套件的版本，解決 404/Version 錯誤
+    使用 Requests 直接呼叫 Google Gemini API (REST 方式)
+    這能避開 SDK 版本過舊的問題。
     """
-    global _API_KEY
     
-    if not _API_KEY:
-        return {"error": "⚠️ API Key 未設定，請重新登入。"}
+    # 從 session 讀取 key
+    api_key = st.session_state.get("api_key_proxy", "")
+    if not api_key:
+        return {"error": "⚠️ API Key 遺失，請重新登入。"}
 
-    # 使用 Gemini 1.5 Flash 模型 (速度快、穩定)
-    # 直接對 Google 的網址發送請求，就像瀏覽器一樣
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={_API_KEY}"
-    
+    # 使用 Gemini 1.5 Flash (目前最穩定快速且免費額度高)
+    model_name = "gemini-1.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+
+    # 建構 Header
     headers = {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json"
     }
 
-    # 這是我們要傳給 AI 的指令
-    prompt = f"""
+    # 建構 Prompt
+    prompt_text = f"""
     你是一位菁英軟體架構師。請根據使用者的產品點子，生成一個完整的軟體專案文件包。
     你需要生成以下四個檔案的內容，並用特定的分隔線隔開。
-
+    
     【產品點子】：
     {product_idea}
 
@@ -55,34 +53,33 @@ def generate_blueprint(product_idea):
     (在此撰寫 TODOLIST.md 的內容：條列式開發任務清單，包含 Checkbox - [ ])
     """
 
-    # 準備資料包裹
-    payload = {
+    # 建構 JSON Body
+    data = {
         "contents": [{
-            "parts": [{"text": prompt}]
+            "parts": [{"text": prompt_text}]
         }]
     }
 
     try:
-        # 發射！直接發送 POST 請求
-        response = requests.post(url, headers=headers, json=payload)
+        # 發送 POST 請求
+        response = requests.post(url, headers=headers, json=data)
         
-        # 檢查是否有網路錯誤
+        # 檢查回應狀態
         if response.status_code != 200:
-            return {"error": f"⚠️ 連線失敗 (代碼 {response.status_code})：\n{response.text}"}
-            
-        # 解析回傳的 JSON 資料
-        result = response.json()
+            error_detail = response.text
+            return {"error": f"⚠️ Google API 連線失敗 (Code {response.status_code})。\n詳細原因：{error_detail}"}
         
-        # 嘗試取得生成的文字
+        # 解析 JSON
+        result_json = response.json()
+        
         try:
-            text = result['candidates'][0]['content']['parts'][0]['text']
+            # 取得生成的文字
+            text = result_json['candidates'][0]['content']['parts'][0]['text']
         except (KeyError, IndexError):
-            return {"error": "⚠️ 生成失敗，Google 回傳了非預期的格式。"}
+            return {"error": "⚠️ 生成失敗，回傳資料格式不如預期。可能內容被阻擋。"}
 
         # --- 解析 AI 回傳的文字，拆解成四個檔案 ---
         files = {}
-        files["_model_used"] = "gemini-1.5-flash (REST API)" # 標記我們用了這個方法
-        
         patterns = {
             "README.md": r"====FILE: README\.md====\n(.*?)(?====FILE:|$)",
             "SPEC.md": r"====FILE: SPEC\.md====\n(.*?)(?====FILE:|$)",
@@ -95,10 +92,10 @@ def generate_blueprint(product_idea):
             if match:
                 files[filename] = match.group(1).strip()
             else:
-                # 簡單容錯：如果沒抓到，就給個提示
-                files[filename] = f"⚠️ ({filename}) 內容解析失敗，請再試一次。"
+                files[filename] = f"⚠️ 內容遺失 ({filename})"
 
+        files["_model_used"] = f"{model_name} (REST API)"
         return files
 
     except Exception as e:
-        return {"error": f"⚠️ 系統發生未預期的錯誤：{str(e)}"}
+        return {"error": f"⚠️ 系統嚴重錯誤：{str(e)}"}
