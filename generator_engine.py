@@ -1,59 +1,56 @@
-import requests # 改用標準網頁請求，不依賴 Google SDK
+import requests
 import re
-import json
 import streamlit as st
+import json
 
 def configure_genai(api_key):
     """
-    因為改用 direct REST API，這裡不需要做 SDK 的設定，
-    但為了保持 app.py 不用改，我們保留這個函式，存下 key 即可。
+    這裡只負責把 Key 存起來，不執行任何 SDK 設定
+    以免觸發版本錯誤
     """
     st.session_state.api_key_proxy = api_key
 
 def generate_blueprint(product_idea):
     """
     使用 Requests 直接呼叫 Google Gemini API (REST 方式)
-    這能避開 SDK 版本過舊的問題。
+    這能 100% 避開 SDK 版本過舊的問題。
     """
     
-    # 從 session 讀取 key
+    # 1. 取得 Key
     api_key = st.session_state.get("api_key_proxy", "")
     if not api_key:
-        return {"error": "⚠️ API Key 遺失，請重新登入。"}
+        # 嘗試從 secrets 拿
+        api_key = st.secrets.get("GOOGLE_API_KEY", "")
+    
+    if not api_key:
+        return {"error": "⚠️ 找不到 API Key，請檢查 secrets.toml"}
 
-    # 使用 Gemini 1.5 Flash (目前最穩定快速且免費額度高)
+    # 2. 設定 API 網址 (使用 gemini-1.5-flash，快速且穩定)
     model_name = "gemini-1.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
-    # 建構 Header
-    headers = {
-        "Content-Type": "application/json"
-    }
+    # 3. 準備 HTTP Header
+    headers = {"Content-Type": "application/json"}
 
-    # 建構 Prompt
+    # 4. 準備 Prompt (提示詞)
     prompt_text = f"""
-    你是一位菁英軟體架構師。請根據使用者的產品點子，生成一個完整的軟體專案文件包。
-    你需要生成以下四個檔案的內容，並用特定的分隔線隔開。
+    你是一位菁英軟體架構師。請根據以下專案需求，生成標準的軟體開發文件。
     
-    【產品點子】：
     {product_idea}
 
-    【請嚴格依照以下格式輸出，不要包含其他開場白】：
-
+    【請嚴格依照以下格式輸出四個檔案區塊】：
+    
     ====FILE: README.md====
-    (在此撰寫 README.md 的內容：專案標題、描述、安裝指南、技術棧清單)
-
+    (內容...)
     ====FILE: SPEC.md====
-    (在此撰寫 SPEC.md 的內容：詳細規格、API 端點定義。請包含至少一個 Mermaid 格式的系統架構圖或是流程圖)
-
+    (內容包含 Mermaid 圖表...)
     ====FILE: REPORT.md====
-    (在此撰寫 REPORT.md 的內容：開發評估報告、預期遇到的技術難點、解決方案分析)
-
+    (內容...)
     ====FILE: TODOLIST.md====
-    (在此撰寫 TODOLIST.md 的內容：條列式開發任務清單，包含 Checkbox - [ ])
+    (內容...)
     """
 
-    # 建構 JSON Body
+    # 5. 包裝成 JSON
     data = {
         "contents": [{
             "parts": [{"text": prompt_text}]
@@ -61,24 +58,21 @@ def generate_blueprint(product_idea):
     }
 
     try:
-        # 發送 POST 請求
-        response = requests.post(url, headers=headers, json=data)
+        # 6. 發送請求 (這是關鍵，直接繞過 Python SDK)
+        response = requests.post(url, headers=headers, json=data, timeout=60)
         
-        # 檢查回應狀態
         if response.status_code != 200:
-            error_detail = response.text
-            return {"error": f"⚠️ Google API 連線失敗 (Code {response.status_code})。\n詳細原因：{error_detail}"}
+            return {"error": f"⚠️ Google 連線失敗 (Code {response.status_code}): {response.text}"}
         
-        # 解析 JSON
-        result_json = response.json()
+        # 7. 解析回傳資料
+        result = response.json()
         
         try:
-            # 取得生成的文字
-            text = result_json['candidates'][0]['content']['parts'][0]['text']
-        except (KeyError, IndexError):
-            return {"error": "⚠️ 生成失敗，回傳資料格式不如預期。可能內容被阻擋。"}
+            text_content = result['candidates'][0]['content']['parts'][0]['text']
+        except Exception:
+            return {"error": "⚠️ AI 回傳了空的內容或格式異常。"}
 
-        # --- 解析 AI 回傳的文字，拆解成四個檔案 ---
+        # 8. 切分檔案
         files = {}
         patterns = {
             "README.md": r"====FILE: README\.md====\n(.*?)(?====FILE:|$)",
@@ -88,14 +82,11 @@ def generate_blueprint(product_idea):
         }
         
         for filename, pattern in patterns.items():
-            match = re.search(pattern, text, re.DOTALL)
-            if match:
-                files[filename] = match.group(1).strip()
-            else:
-                files[filename] = f"⚠️ 內容遺失 ({filename})"
+            match = re.search(pattern, text_content, re.DOTALL)
+            files[filename] = match.group(1).strip() if match else f"⚠️ {filename} 生成遺失"
 
-        files["_model_used"] = f"{model_name} (REST API)"
+        files["_model_used"] = "Gemini 1.5 Flash (REST API)"
         return files
 
     except Exception as e:
-        return {"error": f"⚠️ 系統嚴重錯誤：{str(e)}"}
+        return {"error": f"⚠️ 連線發生例外錯誤：{str(e)}"}
