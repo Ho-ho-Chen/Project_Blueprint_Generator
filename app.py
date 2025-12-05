@@ -1,7 +1,7 @@
 import streamlit as st
+import generator_engine as engine
 import config
 import auth
-import generator_engine as engine
 
 # 1. 初始化頁面設定
 config.setup_page()
