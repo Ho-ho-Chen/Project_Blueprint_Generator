@@ -18,7 +18,7 @@ def call_ai_architect(idea, api_key):
     try:
         # 嘗試連線 1.5-pro
         model = genai.GenerativeModel('gemini-1.5-pro')
-        # 簡單測試連線 (可選，避免浪費 token 可以省略，但在這裡是為了確認模型可用)
+        # 簡單測試連線
         model.generate_content("test")
     except:
         try:
@@ -58,7 +58,7 @@ def create_project_zip(data):
     if "error" in data:
         return None
 
-    # Helper: 安全地將資料轉為易讀的字串
+    # Helper: 安全地將資料轉為易讀的字串，避免格式錯誤
     def format_content(content, is_json=False):
         if not content:
             return ""
@@ -82,10 +82,10 @@ def create_project_zip(data):
 """
 
     # 2. SPEC.md
-    # 處理資料結構，確保如果是 dict/list 會漂亮顯示
     spec_content = format_content(data.get('structure_tree', ''), is_json=False)
     data_schema = format_content(data.get('data_schema', {}), is_json=True)
     
+    # 注意：這裡使用了 f-string 內的換行，Python 3.6+ 支援
     spec = f"""# 📐 技術規格書
 
 ## 1. 系統架構圖
