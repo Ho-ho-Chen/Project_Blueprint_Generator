@@ -16,8 +16,8 @@ def generate_blueprint(product_idea):
     if not api_key:
         return {"error": "⚠️ API Key 遺失，請檢查 secrets.toml"}
 
-    # 2. 設定 API (Gemini 1.5 Flash)
-    model_name = "gemini-1.5-flash"
+    # 2. 設定 API (Gemini 2.0 Flash)
+    model_name = "gemini-2.0-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
     headers = {"Content-Type": "application/json"}
