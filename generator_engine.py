@@ -17,17 +17,22 @@ def get_api_key():
     return api_key
 
 # ==========================================
-# 👇 新增：強固型 API 呼叫函式 (處理 429 錯誤)
+# 👇 核心修復：模型人海戰術清單
 # ==========================================
 def call_gemini_api_robust(prompt_text, api_key):
     """
-    策略：優先使用 2.0-flash-exp，如果遇到 429 (額度滿) 或 503，
-    自動切換到 1.5-flash (穩定版)。
+    策略：嘗試所有可能的模型名稱，直到成功為止。
+    這能解決 404 (找不到模型) 與 429 (額度滿) 的所有問題。
     """
-    # 定義模型優先順序
+    # 定義模型優先順序 (包含最新的、最快的、最舊但最穩的)
     model_candidates = [
-        "gemini-2.0-flash-exp", 
-        "gemini-1.5-flash"
+        "gemini-2.0-flash-exp",      # 首選：最新 2.0
+        "gemini-1.5-flash",          # 次選：主流 1.5 Flash
+        "gemini-1.5-flash-latest",   # 備選：Flash 最新別名
+        "gemini-1.5-flash-001",      # 備選：Flash 固定版本
+        "gemini-1.5-pro",            # 備選：1.5 Pro (比較慢但聰明)
+        "gemini-1.5-pro-latest",     # 備選：Pro 最新別名
+        "gemini-pro"                 # 保底：1.0 Pro (最舊但絕對存在，不死鳥)
     ]
     
     last_error = ""
@@ -46,21 +51,25 @@ def call_gemini_api_robust(prompt_text, api_key):
             if response.status_code == 200:
                 return response.json(), model_name
             
-            # 如果是 429 (額度滿) 或 503 (忙碌)，嘗試下一個模型
-            if response.status_code in [429, 503]:
-                print(f"⚠️ 模型 {model_name} 額度滿或忙碌，切換下一個...")
-                time.sleep(1) # 稍微緩衝
+            # 錯誤代碼處理
+            error_msg = f"Error {response.status_code}: {response.text}"
+            
+            # 404 (找不到模型) 或 429 (額度滿) 或 503 (忙碌) -> 換下一個
+            if response.status_code in [404, 429, 503]:
+                print(f"⚠️ 模型 {model_name} 無法使用 ({response.status_code})，切換下一個...")
+                time.sleep(0.5) # 稍微緩衝
+                last_error = error_msg
                 continue
             
-            # 其他錯誤 (如 400 參數錯誤) 直接記錄，不繼續試
-            last_error = f"Error {response.status_code}: {response.text}"
+            # 其他錯誤 (如 400 參數錯誤)
+            last_error = error_msg
             
         except Exception as e:
             last_error = str(e)
             continue
             
     # 如果迴圈跑完都沒成功，拋出例外
-    raise Exception(f"所有模型皆無法連線。最後錯誤: {last_error}")
+    raise Exception(f"所有模型皆嘗試失敗。請檢查 API Key 是否正確。最後錯誤: {last_error}")
 
 # ==========================================
 # 👇 主功能區
@@ -90,7 +99,7 @@ def generate_blueprint(product_idea):
     """
 
     try:
-        # 3. 改用強固呼叫
+        # 3. 使用強固呼叫
         result_json, used_model = call_gemini_api_robust(prompt_text, api_key)
         
         text_content = result_json['candidates'][0]['content']['parts'][0]['text']
@@ -120,23 +129,14 @@ def generate_blueprint(product_idea):
 # ==========================================
 
 def create_zip_download(files_dict):
-    """
-    【新功能 1】將生成的字典檔案打包成 ZIP
-    """
     zip_buffer = io.BytesIO()
-    # 使用 ZIP_DEFLATED 壓縮算法
     with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
         for filename, content in files_dict.items():
-            # 忽略內部使用的標記欄位 (以 _ 開頭)
             if not filename.startswith("_"): 
                 zip_file.writestr(filename, content)
-    
     return zip_buffer.getvalue()
 
 def generate_structure(context_text):
-    """
-    【新功能 2】Step 2: 根據上面的文件，生成檔案結構樹與流程圖
-    """
     # 1. 取得 Key
     api_key = get_api_key()
     if not api_key: return {"STRUCTURE.txt": "API Key 遺失", "FLOW.mermaid": ""}
@@ -151,23 +151,14 @@ def generate_structure(context_text):
     請嚴格依照以下格式輸出兩個區塊：
 
     ====FILE: STRUCTURE.txt====
-    (請用 ASCII Tree 格式列出專案資料夾結構，例如：
-    project_root/
-    ├── frontend/
-    │   └── package.json
-    ├── backend/
-    │   └── app.py
-    )
+    (請用 ASCII Tree 格式列出專案資料夾結構)
 
     ====FILE: FLOW.mermaid====
-    (請寫一段 Mermaid JS 的 Sequence Diagram [序列圖] 代碼，描述核心功能的運作閉環。
-    開頭必須是 sequenceDiagram。
-    不要包含 markdown 的 ``` 符號。
-    )
+    (請寫一段 Mermaid JS 的 Sequence Diagram [序列圖] 代碼，開頭必須是 sequenceDiagram)
     """
 
     try:
-        # 3. 改用強固呼叫
+        # 3. 使用強固呼叫
         result_json, used_model = call_gemini_api_robust(prompt, api_key)
         
         text = result_json['candidates'][0]['content']['parts'][0]['text']
@@ -182,12 +173,10 @@ def generate_structure(context_text):
             match = re.search(v, text, re.DOTALL)
             if match:
                 content = match.group(1).strip()
-                # 清理可能多餘的 markdown 符號
                 content = content.replace("```mermaid", "").replace("```", "")
                 result[k] = content
             else:
                 result[k] = "生成失敗"
-                
         return result
 
     except Exception as e:
