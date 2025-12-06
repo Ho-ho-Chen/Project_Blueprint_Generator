@@ -18,7 +18,6 @@ st.markdown("""
     
     /* 調整頂部內容的邊距 */
     .block-container {
-        /* ⚠️ 關鍵修正：將 1rem 改為 6rem，確保標題有足夠空間顯示 */
         padding-top: 6rem !important; 
         padding-bottom: 5rem !important;
     }
@@ -31,7 +30,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 👇 核心修復：狀態初始化 & 回呼函式 (Callbacks)
+# 👇 核心：狀態初始化 & 回呼函式 (Callbacks)
 # ==========================================
 
 # 1. 確保所有狀態變數都有初始值
@@ -74,7 +73,11 @@ def check_login():
         st.error("❌ 密碼錯誤")
 
 if not st.session_state.logged_in:
-    st.markdown("## 🔒 系統鎖定中")
+    # 👇 修改點：在登入畫面增加標題
+    st.markdown("# 🏗️ PolyGlot 架構師")
+    st.markdown("---")
+    
+    st.markdown("### 🔒 系統鎖定中")
     st.info("請輸入授權密碼以進入系統。")
     st.text_input("密碼：", type="password", key="password_input", on_change=check_login)
 
@@ -87,8 +90,7 @@ else:
     # 👇 側邊欄：功能中控台
     # ==========================================
     with st.sidebar:
-        # 👇 修改點 1：更換歡迎語
-        st.success("歡迎光臨，軟體架構師") 
+        st.success("歡迎光臨，軟體架構師")
         st.info("💡 模式：HTTP 直連 (雙語版)") 
         
         st.markdown("---")
@@ -223,16 +225,13 @@ else:
             st.subheader("📊 架構可視化")
             s_data = st.session_state.structure_res
             
-            # 👇 使用 container(height=...) 鎖定高度
             c1, c2 = st.columns(2)
-            
             with c1:
                 st.markdown("#### 📁 檔案結構")
                 with st.container(height=500):
                     st.code(s_data.get("STRUCTURE.txt", "無內容"), language="text")
             
             with c2:
-                # 👇 改名為「功能流程圖」
                 st.markdown("#### 🔄 功能流程圖")
                 with st.container(height=500):
                     mermaid = s_data.get("FLOW.mermaid", "")
