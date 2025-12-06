@@ -7,52 +7,59 @@ import generator_engine as engine
 config.setup_page()
 
 # ==========================================
-# 👇 CSS 魔法：
-#    1. 隱藏預設選單
-#    2. 設定「吸頂標題列」樣式
+# 👇 CSS 優化
 # ==========================================
 st.markdown("""
     <style>
-    /* 隱藏 Streamlit 原生選單與按鈕 */
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-
-    /* 調整頂部內容的邊距，讓它貼齊最上方 */
+    div[data-testid="stHorizontalBlock"] { align-items: center; }
+    
+    /* 調整頂部內容的邊距 */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 5rem !important;
-    }
-
-    /* 關鍵 CSS：鎖定標題列 (Sticky Header)
-       這會選取 App 的第一個容器 (包含標題和按鈕的那一塊)
-       並將其設為 sticky (黏性)，滑動時會固定在頂部
-    */
-    div[data-testid="stVerticalBlock"] > div:first-child {
-        position: sticky;
-        top: 0;
-        z-index: 999;       /* 確保在最上層 */
-        background-color: #0e1117; /* 與背景同色，避免透明 */
-        padding-top: 15px;
-        padding-bottom: 15px;
-        border-bottom: 1px solid #333; /* 底部加一條線區隔 */
-        margin-bottom: 20px;
-    }
-    
-    /* 微調按鈕垂直對齊 */
-    div[data-testid="stHorizontalBlock"] {
-        align-items: center;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # ==========================================
+# 👇 核心修復：狀態初始化 & 回呼函式 (Callbacks)
+#    這是解決「按鈕沒反應」的關鍵！
+# ==========================================
+
+# 1. 確保所有狀態變數都有初始值
+keys_to_init = [
+    "logged_in", "workflow_stage", 
+    "trigger_blueprint", "trigger_structure", 
+    "project_name", "project_desc",
+    "questions", "result_files", "structure_res",
+    "ans_fe", "ans_be", "ans_db"
+]
+for key in keys_to_init:
+    if key not in st.session_state:
+        if key == "logged_in": st.session_state[key] = False
+        elif key == "workflow_stage": st.session_state[key] = 0
+        else: st.session_state[key] = None # 其他設為 None 或 False
+
+# 2. 定義按鈕的回呼函式 (Click Handlers)
+#    這些函式會在按鈕按下的瞬間執行，絕對不會漏接
+def on_click_blueprint():
+    st.session_state.trigger_blueprint = True
+
+def on_click_structure():
+    st.session_state.trigger_structure = True
+
+def on_click_reset():
+    st.session_state.workflow_stage = 0
+    # 清空相關資料
+    for k in ["questions", "result_files", "structure_res", "ans_fe", "ans_be", "ans_db"]:
+        st.session_state[k] = None
+
+# ==========================================
 # 👇 簡易登入系統
 # ==========================================
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.workflow_stage = 0 
-
 def check_login():
     user_pass = st.session_state.get("password_input", "")
     secret_pass = st.secrets.get("APP_PASSWORD", "12345678")
@@ -79,45 +86,36 @@ else:
         st.markdown("---")
         if st.button("🔒 登出系統"):
             st.session_state.logged_in = False
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
             st.rerun()
 
     # ==========================================
-    # 👇 頂部中控台 (Header Control Panel)
+    # 👇 頂部中控台 (使用 Callback 綁定)
     # ==========================================
     
-    # 【版面配置調整】
-    # 使用 [2.5, 5, 2.5] 的比例
-    # 左邊 (2.5): 標題
-    # 中間 (5.0): 按鈕區 (縮短寬度，不要佔滿全螢幕)
-    # 右邊 (2.5): 空白緩衝區 (用來把按鈕往左擠，使其緊湊)
     c_title, c_btns, c_empty = st.columns([2.5, 5, 2.5])
     
     with c_title:
-        # 使用 markdown 取代 title 以減少預設留白，讓高度更緊湊
         st.markdown("### 🏗️ PolyGlot 架構師")
         
     with c_btns:
-        # 在中間的 5.0 區域內，再切分 4 個等寬按鈕
         b1, b2, b3, b4 = st.columns(4)
         
         # Button 1: 生成藍圖
         with b1:
             is_disabled_1 = (st.session_state.workflow_stage != 1)
-            help_msg = "請先填寫下方構想並開始諮詢" if st.session_state.workflow_stage == 0 else "點擊生成規格書"
-            if st.button("1.生成藍圖", disabled=is_disabled_1, key="btn_step1", help=help_msg):
-                st.session_state.trigger_blueprint = True
+            help_msg = "請先填寫下方問卷" if st.session_state.workflow_stage == 0 else "點擊生成規格書"
+            # ⚠️ 關鍵修改：移除 if，改用 on_click 參數
+            st.button("1.生成藍圖", disabled=is_disabled_1, key="btn_step1", help=help_msg, on_click=on_click_blueprint)
         
         # Button 2: 生成架構
         with b2:
             is_disabled_2 = (st.session_state.workflow_stage != 2)
-            if st.button("2.生成架構", disabled=is_disabled_2, key="btn_step2"):
-                st.session_state.trigger_structure = True
+            # ⚠️ 關鍵修改：移除 if，改用 on_click 參數
+            st.button("2.生成架構", disabled=is_disabled_2, key="btn_step2", on_click=on_click_structure)
         
         # Button 3: 下載
         with b3:
-            if st.session_state.workflow_stage == 2 and "result_files" in st.session_state:
+            if st.session_state.workflow_stage == 2 and st.session_state.result_files:
                 zip_data = engine.create_zip_download(st.session_state.result_files)
                 st.download_button("3.下載文件", data=zip_data, file_name="project.zip", mime="application/zip")
             else:
@@ -125,15 +123,11 @@ else:
 
         # Button 4: 新專案
         with b4:
-            if st.button("4.新專案", type="primary"):
-                st.session_state.workflow_stage = 0
-                keys_to_reset = ["questions", "result_files", "structure_res", "project_name", "project_desc", "ans_fe", "ans_be", "ans_db"]
-                for k in keys_to_reset:
-                    if k in st.session_state: del st.session_state[k]
-                st.rerun()
+            # ⚠️ 關鍵修改：移除 if，改用 on_click 參數
+            st.button("4.新專案", type="primary", on_click=on_click_reset)
 
-    # 右邊 c_empty 留白，不做任何事，這樣按鈕就不會拉長到最右邊
-    
+    st.markdown("---") 
+
     # ----------------------------------------------------
     # 🔄 智慧引導流程 (Main Workflow)
     # ----------------------------------------------------
@@ -169,6 +163,7 @@ else:
         q_data = st.session_state.questions
         
         c_q1, c_q2, c_q3 = st.columns(3)
+        # 使用 key 綁定 session_state，確保輸入值不會丟失
         with c_q1:
             st.info(f"**前端/介面：**\n{q_data.get('q_frontend', '無問題')}")
             st.text_area("您的回答 (Frontend)", key="ans_fe", height=150)
@@ -181,8 +176,66 @@ else:
             
         st.warning("👉 請填寫完畢後，點擊上方頂部的 **「1.生成藍圖」** 按鈕。")
 
-        # 處理頂部按鈕觸發
-        if st.session_state.get("trigger_blueprint"):
+        # 處理觸發邏輯 (現在由 on_click 驅動，非常穩定)
+        if st.session_state.trigger_blueprint:
+            # 再次確認輸入框有值
             ans_fe = st.session_state.get("ans_fe", "")
             ans_be = st.session_state.get("ans_be", "")
             ans_db = st.session_state.get("ans_db", "")
+            
+            full_req = f"""
+            專案名稱：{st.session_state.project_name}
+            原始構想：{st.session_state.project_desc}
+            【訪談回答】：
+            1. 前端：{ans_fe}
+            2. 後端：{ans_be}
+            3. 資料庫：{ans_db}
+            """
+            with st.spinner("AI 正在根據訪談結果撰寫規格書 (這可能需要 30 秒)..."):
+                res = engine.generate_blueprint(full_req)
+                if "error" in res:
+                    st.error(res["error"])
+                    # 如果失敗，重置按鈕狀態，讓使用者可以重試
+                    st.session_state.trigger_blueprint = False
+                else:
+                    st.session_state.result_files = res
+                    st.session_state.workflow_stage = 2
+                    st.session_state.trigger_blueprint = False
+                    st.rerun()
+
+    # === Stage 2: 結果展示 ===
+    elif st.session_state.workflow_stage == 2:
+        res = st.session_state.result_files
+        
+        st.subheader("📄 規格藍圖預覽")
+        t1, t2, t3, t4 = st.tabs(["README", "SPEC", "REPORT", "TODO"])
+        with t1: st.markdown(res.get("README.md", ""))
+        with t2: st.markdown(res.get("SPEC.md", ""))
+        with t3: st.markdown(res.get("REPORT.md", ""))
+        with t4: st.markdown(res.get("TODOLIST.md", ""))
+        
+        # 處理生成架構圖觸發
+        if st.session_state.trigger_structure:
+            with st.spinner("正在繪製架構圖..."):
+                context = res.get("README.md", "") + "\n" + res.get("SPEC.md", "")
+                struct_res = engine.generate_structure(context)
+                st.session_state.structure_res = struct_res
+                st.session_state.trigger_structure = False
+                st.rerun()
+        
+        if st.session_state.get("structure_res"):
+            st.markdown("---")
+            st.subheader("📊 架構可視化")
+            s_data = st.session_state.structure_res
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### 📁 檔案結構")
+                st.code(s_data.get("STRUCTURE.txt", "無內容"), language="text")
+            with c2:
+                st.markdown("#### 🔄 流程圖")
+                mermaid = s_data.get("FLOW.mermaid", "")
+                if mermaid:
+                    st.markdown(f"```mermaid\n{mermaid}\n```")
+                else:
+                    st.warning("流程圖生成失敗")
