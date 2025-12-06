@@ -7,18 +7,20 @@ import generator_engine as engine
 config.setup_page()
 
 # ==========================================
-# 👇 CSS 優化
+# 👇 CSS 優化 (修復標題被擋住的問題)
 # ==========================================
 st.markdown("""
     <style>
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;} /* 隱藏 Streamlit 原生 Header */
+    
     div[data-testid="stHorizontalBlock"] { align-items: center; }
     
-    /* 調整頂部內容的邊距 */
+    /* 調整頂部內容的邊距，稍微加大一點 */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 2rem !important; 
         padding-bottom: 5rem !important;
     }
     </style>
@@ -26,7 +28,6 @@ st.markdown("""
 
 # ==========================================
 # 👇 核心修復：狀態初始化 & 回呼函式 (Callbacks)
-#    這是解決「按鈕沒反應」的關鍵！
 # ==========================================
 
 # 1. 確保所有狀態變數都有初始值
@@ -44,7 +45,6 @@ for key in keys_to_init:
         else: st.session_state[key] = None # 其他設為 None 或 False
 
 # 2. 定義按鈕的回呼函式 (Click Handlers)
-#    這些函式會在按鈕按下的瞬間執行，絕對不會漏接
 def on_click_blueprint():
     st.session_state.trigger_blueprint = True
 
@@ -89,13 +89,20 @@ else:
             st.rerun()
 
     # ==========================================
+    # 👇 關鍵修復：加入頂部隱形墊片 (Spacer)
+    #    這會強制將內容往下推，確保標題不會被切掉
+    # ==========================================
+    st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
+
+    # ==========================================
     # 👇 頂部中控台 (使用 Callback 綁定)
     # ==========================================
     
     c_title, c_btns, c_empty = st.columns([2.5, 5, 2.5])
     
     with c_title:
-        st.markdown("### 🏗️ PolyGlot 架構師")
+        # 使用 HTML h2 標籤確保樣式一致且不被遮擋
+        st.markdown('<h3 style="margin:0; padding:0;">🏗️ PolyGlot 架構師</h3>', unsafe_allow_html=True)
         
     with c_btns:
         b1, b2, b3, b4 = st.columns(4)
@@ -104,13 +111,11 @@ else:
         with b1:
             is_disabled_1 = (st.session_state.workflow_stage != 1)
             help_msg = "請先填寫下方問卷" if st.session_state.workflow_stage == 0 else "點擊生成規格書"
-            # ⚠️ 關鍵修改：移除 if，改用 on_click 參數
             st.button("1.生成藍圖", disabled=is_disabled_1, key="btn_step1", help=help_msg, on_click=on_click_blueprint)
         
         # Button 2: 生成架構
         with b2:
             is_disabled_2 = (st.session_state.workflow_stage != 2)
-            # ⚠️ 關鍵修改：移除 if，改用 on_click 參數
             st.button("2.生成架構", disabled=is_disabled_2, key="btn_step2", on_click=on_click_structure)
         
         # Button 3: 下載
@@ -123,7 +128,6 @@ else:
 
         # Button 4: 新專案
         with b4:
-            # ⚠️ 關鍵修改：移除 if，改用 on_click 參數
             st.button("4.新專案", type="primary", on_click=on_click_reset)
 
     st.markdown("---") 
