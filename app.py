@@ -7,7 +7,7 @@ import generator_engine as engine
 config.setup_page()
 
 # ==========================================
-# 👇 CSS 優化
+# 👇 CSS 優化 (移除置頂相關代碼，加入按鈕樣式)
 # ==========================================
 st.markdown("""
     <style>
@@ -30,10 +30,8 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 👇 核心修復：狀態初始化 & 回呼函式 (Callbacks)
+# 👇 核心：狀態初始化 & 回呼函式
 # ==========================================
-
-# 1. 確保所有狀態變數都有初始值
 keys_to_init = [
     "logged_in", "workflow_stage", 
     "trigger_blueprint", "trigger_structure", 
@@ -45,23 +43,17 @@ for key in keys_to_init:
     if key not in st.session_state:
         if key == "logged_in": st.session_state[key] = False
         elif key == "workflow_stage": st.session_state[key] = 0
-        else: st.session_state[key] = None # 其他設為 None 或 False
+        else: st.session_state[key] = None
 
-# 2. 定義按鈕的回呼函式 (Click Handlers)
-def on_click_blueprint():
-    st.session_state.trigger_blueprint = True
-
-def on_click_structure():
-    st.session_state.trigger_structure = True
-
+def on_click_blueprint(): st.session_state.trigger_blueprint = True
+def on_click_structure(): st.session_state.trigger_structure = True
 def on_click_reset():
     st.session_state.workflow_stage = 0
-    # 清空相關資料
     for k in ["questions", "result_files", "structure_res", "ans_fe", "ans_be", "ans_db"]:
         st.session_state[k] = None
 
 # ==========================================
-# 👇 簡易登入系統
+# 👇 登入系統
 # ==========================================
 def check_login():
     user_pass = st.session_state.get("password_input", "")
@@ -83,11 +75,10 @@ else:
     engine.configure_genai(api_key)
 
     # ==========================================
-    # 👇 側邊欄：功能中控台
+    # 👇 側邊欄：功能中控台 (Action Center)
     # ==========================================
     with st.sidebar:
-        # 👇 修改點 1：更換歡迎語
-        st.success("歡迎光臨，軟體架構師")
+        st.success("歡迎光臨，軟體架構師") 
         st.info("💡 模式：HTTP 直連 (雙語版)") 
         
         st.markdown("---")
@@ -222,17 +213,15 @@ else:
             st.subheader("📊 架構可視化")
             s_data = st.session_state.structure_res
             
-            # 👇 修改點 2：使用 container(height=...) 鎖定高度，並修改標題
             c1, c2 = st.columns(2)
-            
             with c1:
                 st.markdown("#### 📁 檔案結構")
-                with st.container(height=500): # 鎖定高度
+                with st.container(height=500):
                     st.code(s_data.get("STRUCTURE.txt", "無內容"), language="text")
             
             with c2:
-                st.markdown("#### 🔄 功能流程圖") # 標題修改
-                with st.container(height=500): # 鎖定高度
+                st.markdown("#### 🔄 功能流程圖")
+                with st.container(height=500):
                     mermaid = s_data.get("FLOW.mermaid", "")
                     if mermaid:
                         st.markdown(f"```mermaid\n{mermaid}\n```")
