@@ -7,20 +7,18 @@ import generator_engine as engine
 config.setup_page()
 
 # ==========================================
-# 👇 CSS 優化 (修復標題被擋住的問題)
+# 👇 CSS 優化
 # ==========================================
 st.markdown("""
     <style>
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;} /* 隱藏 Streamlit 原生 Header */
-    
     div[data-testid="stHorizontalBlock"] { align-items: center; }
     
-    /* 調整頂部內容的邊距，稍微加大一點 */
+    /* 調整頂部內容的邊距 */
     .block-container {
-        padding-top: 2rem !important; 
+        padding-top: 1rem !important; 
         padding-bottom: 5rem !important;
     }
     </style>
@@ -81,18 +79,13 @@ else:
 
     # 側邊欄
     with st.sidebar:
-        st.success("✅ 驗證通過")
+        # 👇 修改點 3：更換歡迎語
+        st.success("歡迎光臨，軟體架構師")
         st.info("💡 模式：HTTP 直連 (雙語版)") 
         st.markdown("---")
         if st.button("🔒 登出系統"):
             st.session_state.logged_in = False
             st.rerun()
-
-    # ==========================================
-    # 👇 關鍵修復：加入頂部隱形墊片 (Spacer)
-    #    這會強制將內容往下推，確保標題不會被切掉
-    # ==========================================
-    st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
 
     # ==========================================
     # 👇 頂部中控台 (使用 Callback 綁定)
@@ -101,8 +94,7 @@ else:
     c_title, c_btns, c_empty = st.columns([2.5, 5, 2.5])
     
     with c_title:
-        # 使用 HTML h2 標籤確保樣式一致且不被遮擋
-        st.markdown('<h3 style="margin:0; padding:0;">🏗️ PolyGlot 架構師</h3>', unsafe_allow_html=True)
+        st.markdown("### 🏗️ PolyGlot 架構師")
         
     with c_btns:
         b1, b2, b3, b4 = st.columns(4)
@@ -167,7 +159,6 @@ else:
         q_data = st.session_state.questions
         
         c_q1, c_q2, c_q3 = st.columns(3)
-        # 使用 key 綁定 session_state，確保輸入值不會丟失
         with c_q1:
             st.info(f"**前端/介面：**\n{q_data.get('q_frontend', '無問題')}")
             st.text_area("您的回答 (Frontend)", key="ans_fe", height=150)
@@ -180,9 +171,7 @@ else:
             
         st.warning("👉 請填寫完畢後，點擊上方頂部的 **「1.生成藍圖」** 按鈕。")
 
-        # 處理觸發邏輯 (現在由 on_click 驅動，非常穩定)
         if st.session_state.trigger_blueprint:
-            # 再次確認輸入框有值
             ans_fe = st.session_state.get("ans_fe", "")
             ans_be = st.session_state.get("ans_be", "")
             ans_db = st.session_state.get("ans_db", "")
@@ -199,7 +188,6 @@ else:
                 res = engine.generate_blueprint(full_req)
                 if "error" in res:
                     st.error(res["error"])
-                    # 如果失敗，重置按鈕狀態，讓使用者可以重試
                     st.session_state.trigger_blueprint = False
                 else:
                     st.session_state.result_files = res
@@ -218,7 +206,6 @@ else:
         with t3: st.markdown(res.get("REPORT.md", ""))
         with t4: st.markdown(res.get("TODOLIST.md", ""))
         
-        # 處理生成架構圖觸發
         if st.session_state.trigger_structure:
             with st.spinner("正在繪製架構圖..."):
                 context = res.get("README.md", "") + "\n" + res.get("SPEC.md", "")
@@ -232,14 +219,20 @@ else:
             st.subheader("📊 架構可視化")
             s_data = st.session_state.structure_res
             
+            # 👇 修改點 1：使用 container(height=...) 鎖定高度
             c1, c2 = st.columns(2)
+            
             with c1:
                 st.markdown("#### 📁 檔案結構")
-                st.code(s_data.get("STRUCTURE.txt", "無內容"), language="text")
+                with st.container(height=500): # 鎖定高度 500px
+                    st.code(s_data.get("STRUCTURE.txt", "無內容"), language="text")
+            
             with c2:
-                st.markdown("#### 🔄 流程圖")
-                mermaid = s_data.get("FLOW.mermaid", "")
-                if mermaid:
-                    st.markdown(f"```mermaid\n{mermaid}\n```")
-                else:
-                    st.warning("流程圖生成失敗")
+                # 👇 修改點 2：改名為「功能流程圖」
+                st.markdown("#### 🔄 功能流程圖")
+                with st.container(height=500): # 鎖定高度 500px
+                    mermaid = s_data.get("FLOW.mermaid", "")
+                    if mermaid:
+                        st.markdown(f"```mermaid\n{mermaid}\n```")
+                    else:
+                        st.warning("流程圖生成失敗")
