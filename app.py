@@ -7,16 +7,39 @@ import generator_engine as engine
 config.setup_page()
 
 # ==========================================
-# 👇 CSS 優化：只保留隱藏選單功能，移除導致破圖的置頂設定
+# 👇 CSS 魔法：
+#    1. 隱藏預設選單
+#    2. 設定「吸頂標題列」樣式
 # ==========================================
 st.markdown("""
     <style>
-    /* 1. 隱藏右下角的 Manage App 按鈕 & 右上角選單 */
+    /* 隱藏 Streamlit 原生選單與按鈕 */
     .stDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+
+    /* 調整頂部內容的邊距，讓它貼齊最上方 */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 5rem !important;
+    }
+
+    /* 關鍵 CSS：鎖定標題列 (Sticky Header)
+       這會選取 App 的第一個容器 (包含標題和按鈕的那一塊)
+       並將其設為 sticky (黏性)，滑動時會固定在頂部
+    */
+    div[data-testid="stVerticalBlock"] > div:first-child {
+        position: sticky;
+        top: 0;
+        z-index: 999;       /* 確保在最上層 */
+        background-color: #0e1117; /* 與背景同色，避免透明 */
+        padding-top: 15px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #333; /* 底部加一條線區隔 */
+        margin-bottom: 20px;
+    }
     
-    /* 調整按鈕在頂部的垂直對齊 */
+    /* 微調按鈕垂直對齊 */
     div[data-testid="stHorizontalBlock"] {
         align-items: center;
     }
@@ -49,38 +72,39 @@ else:
     api_key = st.secrets.get("GOOGLE_API_KEY", "")
     engine.configure_genai(api_key)
 
-    # ==========================================
-    # 👇 側邊欄 (Sidebar)
-    # ==========================================
+    # 側邊欄
     with st.sidebar:
         st.success("✅ 驗證通過")
         st.info("💡 模式：HTTP 直連 (雙語版)") 
         st.markdown("---")
-        # 登出按鈕
         if st.button("🔒 登出系統"):
             st.session_state.logged_in = False
-            # 清除所有狀態
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
 
     # ==========================================
-    # 👇 頂部中控台 (正常佈局，不再強制置頂以免遮擋)
+    # 👇 頂部中控台 (Header Control Panel)
     # ==========================================
     
-    c_title, c_btns = st.columns([1.5, 2.5])
+    # 【版面配置調整】
+    # 使用 [2.5, 5, 2.5] 的比例
+    # 左邊 (2.5): 標題
+    # 中間 (5.0): 按鈕區 (縮短寬度，不要佔滿全螢幕)
+    # 右邊 (2.5): 空白緩衝區 (用來把按鈕往左擠，使其緊湊)
+    c_title, c_btns, c_empty = st.columns([2.5, 5, 2.5])
     
     with c_title:
-        st.title("🏗️ PolyGlot 架構師")
+        # 使用 markdown 取代 title 以減少預設留白，讓高度更緊湊
+        st.markdown("### 🏗️ PolyGlot 架構師")
         
     with c_btns:
-        # 放置四個功能按鈕
+        # 在中間的 5.0 區域內，再切分 4 個等寬按鈕
         b1, b2, b3, b4 = st.columns(4)
         
         # Button 1: 生成藍圖
         with b1:
             is_disabled_1 = (st.session_state.workflow_stage != 1)
-            # 使用 help 提示當前狀態
             help_msg = "請先填寫下方構想並開始諮詢" if st.session_state.workflow_stage == 0 else "點擊生成規格書"
             if st.button("1.生成藍圖", disabled=is_disabled_1, key="btn_step1", help=help_msg):
                 st.session_state.trigger_blueprint = True
@@ -108,8 +132,8 @@ else:
                     if k in st.session_state: del st.session_state[k]
                 st.rerun()
 
-    st.markdown("---") # 分隔線
-
+    # 右邊 c_empty 留白，不做任何事，這樣按鈕就不會拉長到最右邊
+    
     # ----------------------------------------------------
     # 🔄 智慧引導流程 (Main Workflow)
     # ----------------------------------------------------
@@ -144,11 +168,9 @@ else:
         
         q_data = st.session_state.questions
         
-        # 使用 columns 排版問卷，讓畫面不那麼擁擠
         c_q1, c_q2, c_q3 = st.columns(3)
         with c_q1:
             st.info(f"**前端/介面：**\n{q_data.get('q_frontend', '無問題')}")
-            # 使用 key 來自動綁定 session_state
             st.text_area("您的回答 (Frontend)", key="ans_fe", height=150)
         with c_q2:
             st.info(f"**後端/邏輯：**\n{q_data.get('q_backend', '無問題')}")
@@ -161,67 +183,6 @@ else:
 
         # 處理頂部按鈕觸發
         if st.session_state.get("trigger_blueprint"):
-            # 從 session_state 獲取用戶剛剛輸入的回答
             ans_fe = st.session_state.get("ans_fe", "")
             ans_be = st.session_state.get("ans_be", "")
             ans_db = st.session_state.get("ans_db", "")
-            
-            full_req = f"""
-            專案名稱：{st.session_state.project_name}
-            原始構想：{st.session_state.project_desc}
-            【訪談回答】：
-            1. 前端：{ans_fe}
-            2. 後端：{ans_be}
-            3. 資料庫：{ans_db}
-            """
-            with st.spinner("AI 正在根據訪談結果撰寫規格書..."):
-                res = engine.generate_blueprint(full_req)
-                if "error" in res:
-                    st.error(res["error"])
-                else:
-                    st.session_state.result_files = res
-                    st.session_state.workflow_stage = 2
-                    st.session_state.trigger_blueprint = False
-                    st.rerun()
-
-    # === Stage 2: 結果展示 ===
-    elif st.session_state.workflow_stage == 2:
-        res = st.session_state.result_files
-        
-        st.subheader("📄 規格藍圖預覽")
-        t1, t2, t3, t4 = st.tabs(["README", "SPEC", "REPORT", "TODO"])
-        with t1: st.markdown(res.get("README.md", ""))
-        with t2: st.markdown(res.get("SPEC.md", ""))
-        with t3: st.markdown(res.get("REPORT.md", ""))
-        with t4: st.markdown(res.get("TODOLIST.md", ""))
-        
-        # 處理生成架構圖觸發
-        if st.session_state.get("trigger_structure"):
-            with st.spinner("正在繪製架構圖..."):
-                context = res.get("README.md", "") + "\n" + res.get("SPEC.md", "")
-                struct_res = engine.generate_structure(context)
-                st.session_state.structure_res = struct_res
-                st.session_state.trigger_structure = False
-                st.rerun()
-        
-        if "structure_res" in st.session_state:
-            st.markdown("---")
-            st.subheader("📊 架構可視化")
-            s_data = st.session_state.structure_res
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("#### 📁 檔案結構")
-                st.code(s_data.get("STRUCTURE.txt", ""), language="text")
-            with c2:
-                st.markdown("#### 🔄 流程圖")
-                mermaid = s_data.get("FLOW.mermaid", "")
-                if mermaid:
-                    # 使用 Streamlit 原生 Markdown 渲染 Mermaid
-                    st.markdown(f"""
-                    ```mermaid
-                    {mermaid}
-                    ```
-                    """)
-                else:
-                    st.warning("流程圖生成失敗，請重試")
